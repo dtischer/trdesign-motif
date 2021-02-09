@@ -1,0 +1,27 @@
+<ROSETTASCRIPTS>
+		<SCOREFXNS>
+						
+			<ScoreFunction name="sfxn_pure" weights="beta_genpot">
+				<Reweight scoretype="cart_bonded" weight="0.8"/>
+				<Reweight scoretype="pro_close" weight="0.0"/>
+			</ScoreFunction>
+			
+		</SCOREFXNS>
+		
+		<TASKOPERATIONS>
+		</TASKOPERATIONS>
+		
+		<MOVERS>
+			 <StructProfileMover name="genProfile" burialWt="0.4" psiblast_style_pssm="1" add_csts_to_pose="1" outputProfile="True" consider_topN_frags="800" eliminate_background="0" ignore_terminal_residue="1" only_loops="0" RMSthreshold="0.60" /> output_pssm="True"
+		</MOVERS>
+		
+		<FILTERS>		
+		</FILTERS>
+		
+		<PROTOCOLS>
+			<Add mover="genProfile"/>
+		</PROTOCOLS>
+		
+		<OUTPUT scorefxn="sfxn_pure"/>
+</ROSETTASCRIPTS>
+

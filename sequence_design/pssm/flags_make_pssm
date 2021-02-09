@@ -1,0 +1,12 @@
+-database /home/norn/Rosetta/main/database
+-indexed_structure_store:fragment_store /home/bcov/sc/scaffold_comparison/data/ss_grouped_vall_all.h5
+#-indexed_structure_store:fragment_store /home/brunette/src/structured_library/unpublished_databases/ss_grouped_vall_all.h5
+#-indexed_structure_store:fragment_store /home/brunette/src/structured_library/unpublished_databases/ss_grouped_vall_helix_sheet_shortLoop.h5
+-nooutput
+-beta
+-load_PDB_components false
+-ignore_zero_occupancy False
+-corrections::beta_nov16
+-mute all
+-overwrite
+-ignore_unrecognized_res
