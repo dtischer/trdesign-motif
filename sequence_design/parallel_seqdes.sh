@@ -21,7 +21,7 @@
 ##################
 # Main
 ##################
-GIT_ROOT=$(git rev-parse --show-toplevel)
+GIT_ROOT="/home/dtischer/projects/discon_motifs/project_LSD_v2/"  # REPLACE WITH AUTOMATIC WAY
 
 # Parse inputs
 while getopts l:o:t:b:r: flag

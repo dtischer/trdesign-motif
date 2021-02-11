@@ -70,10 +70,10 @@ def main():
         out_dir = args.out_dir
         
     # Make needed dirs
-    os.makedirs(out_dir+'/fast_design', exist_ok=True) 
-    os.makedirs(out_dir+'fast_designs/complex', exist_ok=True)
-    os.makedirs(out_dir+'fast_designs/chA', exist_ok=True)
-    os.makedirs(out_dir+'fast_designs/hb_stats', exist_ok=True)
+    os.makedirs(out_dir+'/fast_designs', exist_ok=True) 
+    os.makedirs(out_dir+'/fast_designs/complex', exist_ok=True)
+    os.makedirs(out_dir+'/fast_designs/chA', exist_ok=True)
+    os.makedirs(out_dir+'/fast_designs/hb_stats', exist_ok=True)
         
     # Resolve path to the native pdb
     if args.native is not None:
@@ -181,28 +181,43 @@ def main():
 
             <ScoreFunction name="sfxn_pure">
             </ScoreFunction>
+            
+            <ScoreFunction name="SFXN3" weights="beta_nov16">
+                <Reweight scoretype="res_type_constraint" weight="0.3"/>  # experiment with this value original designs from 3_25_20 were 0.3
+                <Reweight scoretype="hbond_lr_bb" weight="2"/>
+                <Reweight scoretype="hbond_sr_bb" weight="1.5"/>
+                <Reweight scoretype="atom_pair_constraint" weight="1.0" />
+                <Reweight scoretype="aa_composition" weight="1.0" />
+                <Reweight scoretype="approximate_buried_unsat_penalty" weight="5.0" />
+                <Set approximate_buried_unsat_penalty_assume_const_backbone="true" />
+                <Set approximate_buried_unsat_penalty_natural_corrections1="true" />
+                <Set approximate_buried_unsat_penalty_hbond_energy_threshold="-1.0" />
+                <Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-2.5" />
+                <Set approximate_buried_unsat_penalty_hbond_bonus_ser_to_helix_bb="0.0" />
+            </ScoreFunction>
       </SCOREFXNS>
 
       <RESIDUE_SELECTORS>
-        <Layer name="init_core_SCN" select_core="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
-        <Layer name="init_boundary_SCN" select_boundary="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
-        <Layer name="surface_SCN" select_surface="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
-        <Index name="hbnet_res" resnums="{1}"/>
-        <Not name="not_hbnet_res" selector="hbnet_res" />
-        <And name="surface_SCN_and_not_hbnet_res" selectors="surface_SCN,not_hbnet_res"/>
-        
-        <Chain name="chainA" chains="1" />
-        <Chain name="chainB" chains="2" />
-        <InterfaceByVector name="interface" grp1_selector="chainA" grp2_selector="chainB" />
-        <And name="interface_chainB" selectors="interface,chainB" />
-        <Not name="not_interface" selector="interface" />
-        <And name="not_interface_chainB" selectors="not_interface,chainB" />
-        
-        <ResiduePDBInfoHasLabel name="HOTSPOT_res" property="HOTSPOT" />
+          <Layer name="init_core_SCN" select_core="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
+          <Layer name="init_boundary_SCN" select_boundary="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
+          <Layer name="surface_SCN" select_surface="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
+          <Index name="hbnet_res" resnums="{1}"/>
+          <Not name="not_hbnet_res" selector="hbnet_res" />
+          <And name="surface_SCN_and_not_hbnet_res" selectors="surface_SCN,not_hbnet_res"/>
+
+          <Chain name="chainA" chains="1" />
+          <Chain name="chainB" chains="2" />
+          <InterfaceByVector name="interface" grp1_selector="chainA" grp2_selector="chainB" />
+          <And name="interface_chainB" selectors="interface,chainB" />
+          <Not name="not_interface" selector="interface" />
+          <And name="not_interface_chainB" selectors="not_interface,chainB" />
+
+          <ResiduePDBInfoHasLabel name="HOTSPOT_res" property="HOTSPOT" />
       </RESIDUE_SELECTORS>
 
       <TASKOPERATIONS>
-          <SeqprofConsensus name="pssm_cutoff" filename="{0}" min_aa_probability="-0.5" convert_scores_to_probabilities="0" probability_larger_than_current="0" debug="1" ignore_pose_profile_length_mismatch="1"/>
+          <SeqprofConsensus name="pssm_cutoff" filename="{0}" min_aa_probability="-1" convert_scores_to_probabilities="0" probability_larger_than_current="0" debug="1" ignore_pose_profile_length_mismatch="1"/>
+          SeqprofConsensus name="pssm_cutoff" filename="{0}" min_aa_probability="-0.5" convert_scores_to_probabilities="0" probability_larger_than_current="0" debug="1" ignore_pose_profile_length_mismatch="1"/>
           <RestrictAbsentCanonicalAAS name="noCys" keep_aas="ADEFGHIKLMNPQRSTVWY"/>
           <PruneBuriedUnsats name="prune_buried_unsats" allow_even_trades="false" atomic_depth_cutoff="3.5" minimum_hbond_energy="-0.5" />
           <LimitAromaChi2 name="limitchi2" chi2max="110" chi2min="70" include_trp="True"/>
@@ -228,7 +243,7 @@ def main():
       </TASKOPERATIONS>
 
       <MOVERS>
-        <FavorSequenceProfile name="FSP" scaling="none" weight="1" pssm="{0}" scorefxns="sfxn_design"/>
+        <FavorSequenceProfile name="FSP" scaling="none" weight="1" pssm="{0}" scorefxns="SFXN3" chain="1"/>
         <SwitchResidueTypeSetMover name="to_fullatom" set="fa_standard"/>
 
         PackRotamersMover name="pack" scorefxn="sfxn_pure" task_operations="pssm_cutoff,noCys"/>
@@ -237,7 +252,7 @@ def main():
         <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="ex1_ex2aro,ic"/>
         <ClearConstraintsMover name="rm_csts" />
 
-        <FastDesign name="fastDesign" scorefxn="sfxn_design" repeats="2" task_operations="ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019">
+        <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019">  # ex1_ex2aro
             <MoveMap name="MM">                
                 <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
                 <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
@@ -287,7 +302,6 @@ def main():
     ###########################################################################################
     
     # Setting residue type constrained residues to their target identities
-    ### TO DO. THIS NUMBERING IF OFF BY 1 !!!!!!!!!!!!!!! (and not mutating the residue?)
     info = p_hal.pdb_info()
     for i_row,row in df_selected_csts.iterrows():
         native_seq = row['seq']
@@ -300,7 +314,6 @@ def main():
             mutator.apply(p_hal)
             info.add_reslabel(resi1,'csts_type_'+row['csts_type'])
             print(f'mutating {resi1} to {resn}')
-    p_hal.dump_pdb('force_hb.pdb')
     
     # Add pairwise distance csts for donor/acceptor groups
     hbondable_res_types = ['ARG', 'HIS', 'LYS', 'ASP', 'GLU', 'SER', 'THR', 'ASN', 'GLN', 'TYR', 'TRP']
@@ -342,28 +355,29 @@ def main():
                     if don_name=='HIS':
                          don_atom_name = 'HE2'
                     
-                    acc_res_no = bond['acc_res_n']
-                    don_res_no = bond['don_res_n']
-                    print(f"Setting up distance csts for hbond between ACCEPTOR: {acc_res_name} {resi_hal} atom {acc_atom_name}, and DONOR: {don_res_name} {resj_hal} atom {don_atom_name}")
-                    
-                    id_acc = rosetta.core.id.AtomID(p_hal.residue(resi_hal).atom_index(acc_atom_name), resi_hal)
-                    id_don = rosetta.core.id.AtomID(p_hal.residue(resj_hal).atom_index(don_atom_name), resj_hal)
-                    func = rosetta.core.scoring.func.HarmonicFunc(HAdist, hbond_csts_standard_dev)
-                    cstAB = rosetta.core.scoring.constraints.AtomPairConstraint(id_don, id_acc, func)
-                    label = p_hal.add_constraint(cstAB)
-                    
+                    if True:
+                      acc_res_no = bond['acc_res_n']
+                      don_res_no = bond['don_res_n']
+                      print(f"Setting up distance csts for hbond between ACCEPTOR: {acc_res_name} {resi_hal} atom {acc_atom_name}, and DONOR: {don_res_name} {resj_hal} atom {don_atom_name}")
+
+                      id_acc = rosetta.core.id.AtomID(p_hal.residue(resi_hal).atom_index(acc_atom_name), resi_hal)
+                      id_don = rosetta.core.id.AtomID(p_hal.residue(resj_hal).atom_index(don_atom_name), resj_hal)
+                      func = rosetta.core.scoring.func.HarmonicFunc(HAdist, hbond_csts_standard_dev)
+                      cstAB = rosetta.core.scoring.constraints.AtomPairConstraint(id_don, id_acc, func)
+                      label = p_hal.add_constraint(cstAB)
+
                     # Only constrain identities for the residue types that can hbond
                     if acc_res_name in hbondable_res_types and acc_atom_name not in bb_hbondable_atom_types:
                         hbnet_resnums.append(int(resi_hal))
                     if don_res_name in hbondable_res_types and don_atom_name not in bb_hbondable_atom_types:
                         hbnet_resnums.append(int(resj_hal))
-                    
+
                     d_source_networks['acc_res_n_design'].append(resi_hal)
                     d_source_networks['don_res_n_design'].append(resj_hal)
-                    
+
                     d_source_networks['acc_res_n_native'].append(resi_nat+1)
                     d_source_networks['don_res_n_native'].append(resj_nat+1)
-                    
+
                     d_source_networks['energy_hbond_plus_elec'].append(bond['energy_hbond_plus_elec'])
                     d_source_networks['native_id'].append(native_id)
                     d_source_networks['category'].append(hbnet_type)
@@ -378,8 +392,8 @@ def main():
     hbnet_resnums = np.sort(np.array(list(set(hbnet_resnums))))
     print('Forcing identities for residues', hbnet_resnums)
     pssm_f = args.pssm_file
-    os.makedirs(f'{out_dir}/fast_design/pssm', exist_ok=True)
-    pssm_f_updated = f'{out_dir}/fast_design/pssm/{bn_des}_updated.pssm' 
+    os.makedirs(f'{out_dir}/fast_designs/pssm', exist_ok=True)
+    pssm_f_updated = f'{out_dir}/fast_designs/pssm/{bn_des}_updated.pssm' 
     pssm = design_utils.read_pssm(pssm_f)
     pssm[hbnet_resnums-1,:] = 0 # ResNums are 1 numbered
     
@@ -455,6 +469,8 @@ def main():
 
     print(p_hal_tar.pdb_info())
     print(p_hal_tar.fold_tree())
+    
+    p_hal_tar.dump_pdb(f'{out_dir}/fast_designs/post_align_mut.pdb')
     ############################################################################################
     # Run design
     ###########################################################################################
@@ -464,20 +480,28 @@ def main():
     task_relax = rosetta_scripts.SingleoutputRosettaScriptsTask(xml_rd1)
     task_relax.setup() # syntax check
     print("Running protocol")
-    #packed_pose = task_relax(p_hal_tar)
+    packed_pose = task_relax(p_hal_tar)
+    p_packed = packed_pose.pose
+    p_packed = p_hal_tar
     t1 = time.time()
     print("Design took ", t1-t0)
 
+    # redo pdb_info
+    p_packed.pdb_info(p_hal_tar.pdb_info())
+    print(p_packed.pdb_info())
+    print(p_hal_tar.pdb_info())
+    
     df_scores = pandas.DataFrame.from_records([packed_pose.scores])
     
     ###########################################
     # Save results
     ###########################################
-    packed_pose.dump_pdb(f'{out_dir}/fast_designs/complex/{bn_des}_complex.pdb')
+    p_packed.dump_pdb(f'{out_dir}/fast_designs/complex/{bn_des}_complex.pdb')
 
     # only use chA for forward folding!
-    chA = packed_pose.split_by_chain()[1]
+    chA = p_packed.split_by_chain()[1]
     chA.dump_pdb(f'{out_dir}/fast_designs/chA/{bn_des}.pdb')
+    
 #     #========================================================================
 #     # Extra filters
 #     #========================================================================
@@ -536,7 +560,7 @@ def main():
     # Summarize the hbnet info
     df_hbnets = pd.DataFrame.from_dict(d)
     mean_hbnet_energy_delta = np.mean(df_hbnets['delta_hbnet_energy'])
-    df_hbnets.to_csv(f'{out_dir}/fast_designs/hbstats/{bn_des}.hbnetAnalysis.csv')
+    df_hbnets.to_csv(f'{out_dir}/fast_designs/hb_stats/{bn_des}.hbnetAnalysis.csv')
 
     # Load in the scores add the hbnet scoring summary to that
     df_scores['mean_hbnet_energy_delta'] = mean_hbnet_energy_delta

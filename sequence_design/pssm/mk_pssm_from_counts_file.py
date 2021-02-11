@@ -1,3 +1,5 @@
+#!/software/conda/envs/pyrosetta/bin/python3.7
+
 from optparse import OptionParser
 import pandas as pd
 from shutil import copyfile
