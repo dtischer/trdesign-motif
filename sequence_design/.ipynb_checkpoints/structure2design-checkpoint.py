@@ -248,8 +248,16 @@ def main():
 
         PackRotamersMover name="pack" scorefxn="sfxn_pure" task_operations="pssm_cutoff,noCys"/>
 
-        <MinMover name="hard_min" scorefxn="sfxn_pure" bb="1" chi="1"/>
-        <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="ex1_ex2aro,ic"/>
+        MinMover name="hard_min" scorefxn="sfxn_pure" bb="1" chi="1"/>  # is anything calling this?
+        <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="ex1_ex2aro,ic">
+            <MoveMap name="MM">                
+                <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
+                <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
+                <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
+                <Jump number="1" setting="true" />
+            </MoveMap>
+        </FastRelax>
+        
         <ClearConstraintsMover name="rm_csts" />
 
         <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
@@ -408,7 +416,6 @@ def main():
             mutator = rosetta.protocols.simple_moves.MutateResidue(i+1,'ALA')
             mutator.apply(p_hal)
             print(f'mutating C{i+1}A')
-            print(sfx_cnst.show(p_hal))
 
     # 2. Force aa at specified positions along the contig
     for pdb_idx_nat in args.freeze_native_residues:

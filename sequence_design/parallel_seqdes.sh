@@ -16,7 +16,7 @@
 #      BE SURE TO SINGLE QUOTE FROZEN RESIDUES ex: -r '1 2 3 4 5'
 
 # example usage (run from the directory with the .trb, .npz and .fas files):
-# ~/projects/discon_motifs/scripts/parallel_fastdes.sh -t /home/dtischer/projects/discon_motifs/data/ref_struc/IL4_receptor_sc.pdb -b /home/dtischer/projects/discon_motifs/data/benchmarks/IL4/3BPL_xtl.pdb -r '5 6 8 9 11 12 13 15 78 81 82 85 87 88 89 91 92 114 115 118 121 122' 
+# ~/projects/discon_motifs/scripts/parallel_seqdes.sh -t /home/dtischer/projects/discon_motifs/data/ref_struc/IL4_receptor_sc.pdb -b /home/dtischer/projects/discon_motifs/data/benchmarks/IL4/3BPL_xtl.pdb -r '5 6 8 9 11 12 13 15 78 81 82 85 87 88 89 91 92 114 115 118 121 122' 
 
 ##################
 # Main
@@ -47,7 +47,7 @@ GROUP_SIZE=1
 NUM_TASKS=$(cat $TASK_FILE|wc -l)
 sbatch -a 1-$(($NUM_TASKS / $GROUP_SIZE + 1)) <<END
 #!/bin/bash
-#SBATCH -p short
+#SBATCH -p medium
 #SBATCH -c 1
 #SBATCH --mem=8g
 #SBATCH -o %A_%a.log
