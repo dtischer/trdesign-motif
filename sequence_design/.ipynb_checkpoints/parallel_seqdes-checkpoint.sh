@@ -27,8 +27,8 @@ GIT_ROOT="/home/dtischer/projects/discon_motifs/project_LSD_v2/"  # REPLACE WITH
 while getopts l:o:t:b:r: flag
 do
   case "${flag}" in
-    t) target=${OPTARG};;
-    b) binder=${OPTARG};;
+    t) target=${OPTARG};;  # usually a receptor
+    b) binder=${OPTARG};;  # native protein you are trying to mimic
     r) residues_2_keep=${OPTARG};;  # BE SURE TO SINGLE QUOTE FROZEN RESIDUES ex: -r '1 2 3 4 5'
   esac
 done

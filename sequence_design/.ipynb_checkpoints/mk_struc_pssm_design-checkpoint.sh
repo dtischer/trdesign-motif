@@ -40,7 +40,7 @@ mkdir -p ${BASE_DIR}/pssm
 
 #get counts
 cd ${BASE_DIR}  # the following script must be run in a dir with subdir "out". There is no option specify the out dir.
-/home/norn/Rosetta/main/source/bin/rosetta_scripts.hdf5.linuxgccrelease -s ${BASE_DIR}/${name}.pdb #@${GIT_ROOT}/sequence_design/pssm/flags_make_pssm -parser:protocol ${GIT_ROOT}/sequence_design/pssm/pssm_from_frags.xml
+/home/norn/Rosetta/main/source/bin/rosetta_scripts.hdf5.linuxgccrelease -s ${BASE_DIR}/${name}.pdb @${GIT_ROOT}/sequence_design/pssm/flags_make_pssm -parser:protocol ${GIT_ROOT}/sequence_design/pssm/pssm_from_frags.xml
 cd $0
 
 #make pssm from count file

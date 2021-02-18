@@ -159,7 +159,7 @@ def main():
     pack_protocol = """
     <ROSETTASCRIPTS>
       <SCOREFXNS>
-            <ScoreFunction name="sfxn_design">
+            <ScoreFunction name="sfxn_design" weights="beta_nov16">
                 <Reweight scoretype="res_type_constraint" weight="0.3"/>
                 <Reweight scoretype="arg_cation_pi" weight="3"/>
                 <Reweight scoretype="approximate_buried_unsat_penalty" weight="5"/>
@@ -173,16 +173,16 @@ def main():
                 <Reweight scoretype="angle_constraint" weight="0.1"/>
             </ScoreFunction>
 
-            <ScoreFunction name="fa_csts">
+            <ScoreFunction name="fa_csts" weights="beta_nov16">  # add "weights" or else this sxfn will JUST have these 3 terms
                 <Reweight scoretype="atom_pair_constraint" weight="3"/>
                 <Reweight scoretype="dihedral_constraint" weight="1"/>
                 <Reweight scoretype="angle_constraint" weight="1"/>
             </ScoreFunction>
 
-            <ScoreFunction name="sfxn_pure">
+            <ScoreFunction name="sfxn_pure" weights="beta_nov16">
             </ScoreFunction>
             
-            <ScoreFunction name="SFXN3" weights="beta_nov16">
+            <ScoreFunction name="SFXN3" weights="beta_nov16">  
                 <Reweight scoretype="res_type_constraint" weight="0.3"/>  # experiment with this value original designs from 3_25_20 were 0.3
                 <Reweight scoretype="hbond_lr_bb" weight="2"/>
                 <Reweight scoretype="hbond_sr_bb" weight="1.5"/>
@@ -252,7 +252,7 @@ def main():
         <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="ex1_ex2aro,ic"/>
         <ClearConstraintsMover name="rm_csts" />
 
-        <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019">  # ex1_ex2aro
+        <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
             <MoveMap name="MM">                
                 <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
                 <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
@@ -299,8 +299,7 @@ def main():
     
     ############################################################################################
     # Setup atom pair constraints for the hbonds
-    ###########################################################################################
-    
+    ###########################################################################################    
     # Setting residue type constrained residues to their target identities
     info = p_hal.pdb_info()
     for i_row,row in df_selected_csts.iterrows():
@@ -355,16 +354,15 @@ def main():
                     if don_name=='HIS':
                          don_atom_name = 'HE2'
                     
-                    if True:
-                      acc_res_no = bond['acc_res_n']
-                      don_res_no = bond['don_res_n']
-                      print(f"Setting up distance csts for hbond between ACCEPTOR: {acc_res_name} {resi_hal} atom {acc_atom_name}, and DONOR: {don_res_name} {resj_hal} atom {don_atom_name}")
+                    acc_res_no = bond['acc_res_n']
+                    don_res_no = bond['don_res_n']
+                    print(f"Setting up distance csts for hbond between ACCEPTOR: {acc_res_name} {resi_hal} atom {acc_atom_name}, and DONOR: {don_res_name} {resj_hal} atom {don_atom_name}")
 
-                      id_acc = rosetta.core.id.AtomID(p_hal.residue(resi_hal).atom_index(acc_atom_name), resi_hal)
-                      id_don = rosetta.core.id.AtomID(p_hal.residue(resj_hal).atom_index(don_atom_name), resj_hal)
-                      func = rosetta.core.scoring.func.HarmonicFunc(HAdist, hbond_csts_standard_dev)
-                      cstAB = rosetta.core.scoring.constraints.AtomPairConstraint(id_don, id_acc, func)
-                      label = p_hal.add_constraint(cstAB)
+                    id_acc = rosetta.core.id.AtomID(p_hal.residue(resi_hal).atom_index(acc_atom_name), resi_hal)
+                    id_don = rosetta.core.id.AtomID(p_hal.residue(resj_hal).atom_index(don_atom_name), resj_hal)
+                    func = rosetta.core.scoring.func.HarmonicFunc(HAdist, hbond_csts_standard_dev)
+                    cstAB = rosetta.core.scoring.constraints.AtomPairConstraint(id_don, id_acc, func)
+                    label = p_hal.add_constraint(cstAB)
 
                     # Only constrain identities for the residue types that can hbond
                     if acc_res_name in hbondable_res_types and acc_atom_name not in bb_hbondable_atom_types:
@@ -409,7 +407,9 @@ def main():
         if a == 'C':
             mutator = rosetta.protocols.simple_moves.MutateResidue(i+1,'ALA')
             mutator.apply(p_hal)
-    
+            print(f'mutating C{i+1}A')
+            print(sfx_cnst.show(p_hal))
+
     # 2. Force aa at specified positions along the contig
     for pdb_idx_nat in args.freeze_native_residues:
         # Check frozen residue is in the contig. Sometimes we overspecify the frozen residues
@@ -448,7 +448,7 @@ def main():
         atom_id_hal = pyrosetta.rosetta.core.id.AtomID(p_hal.residue(pose_idx_hal).atom_index("CA"), pose_idx_hal)
         align_map[atom_id_hal] = atom_id_nat
     rmsd = pyrosetta.rosetta.core.scoring.superimpose_pose(p_hal, p_nat, align_map)
-        
+      
     # 4. Append p_tar to p_hal and clean up the fold tree
     # concatenate hal ptn to the target
     p_hal.append_pose_by_jump(p_tar, 1 )
@@ -497,8 +497,6 @@ def main():
     # Save results
     ###########################################
     p_packed.dump_pdb(f'{out_dir}/fast_designs/complex/{bn_des}_complex.pdb')
-
-    # only use chA for forward folding!
     chA = p_packed.split_by_chain()[1]
     chA.dump_pdb(f'{out_dir}/fast_designs/chA/{bn_des}.pdb')
     
