@@ -57,7 +57,7 @@ def main():
     ###############################################################################
     # Init pyrosetta
     ###############################################################################
-    init('-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -beta_nov16 -corrections::beta_nov16')
+    init('-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -beta_nov16 -corrections::beta_nov16 -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
 
     # load hal meta data
     with open(args.trb_file, 'rb') as infile:
@@ -269,21 +269,38 @@ def main():
             </MoveMap>
         </FastDesign>
 
+        <SwitchChainOrder name="chain1onlypre" chain_order="1" />
+        <ScoreMover name="scorepose" scorefxn="sfxn_pure" verbose="false" />
+        <ParsedProtocol name="chain1only">  # deletes everything BUT chain 1 (A) and then scores it. (Note: It does not alter the pose after it exits)
+            <Add mover="chain1onlypre" />
+            <Add mover="scorepose" />
+        </ParsedProtocol>
+
       </MOVERS>
 
       <FILTERS>
-          DesignableResidues name="test_selection1" packable="1" task_operations="surface1"/>
-
-          <ScoreType name="totalscore" scorefxn="sfxn_pure" threshold="9999" confidence="1"/>
-          <ResidueCount name="nres" confidence="1" />
-          <CalculatorFilter name="score_per_res" confidence="1" equation="SCORE/NRES" threshold="999">
-              <Var name="SCORE" filter_name="totalscore" />
-              <Var name="NRES" filter_name="nres" />
-          </CalculatorFilter>
         <BuriedUnsatHbonds name="vbuns_all_heavy" report_all_heavy_atom_unsats="true" scorefxn="sfxn_pure" ignore_surface_res="false" print_out_info_to_pdb="true" atomic_depth_selection="5.5" burial_cutoff="1000" confidence="0" />
         <BuriedUnsatHbonds name="sbuns_all_heavy" report_all_heavy_atom_unsats="true" scorefxn="sfxn_pure" cutoff="4" residue_surface_cutoff="20.0" ignore_surface_res="true" print_out_info_to_pdb="true" dalphaball_sasa="1" probe_radius="1.1" atomic_depth_selection="5.5" atomic_depth_deeper_than="false" confidence="0" />
-
+        
+        # dt added filters
+        <ScoreType name="score" scorefxn="sfxn_pure" score_type="total_score" threshold="0.0" confidence="0" />
+        <MoveBeforeFilter name="score_monomer" mover="chain1only" filter="score" confidence="0" />
+        
+        <ResidueCount name="nres" confidence="0" />
+        <MoveBeforeFilter name="nres_monomer" mover="chain1only" filter="nres" confidence="0" />
+        
+        <CalculatorFilter name="score_res_monomer" confidence="0" equation="SCORE/NRES" threshold="-2.1">
+          <VAR name="SCORE" filter_name="score_monomer" />
+          <VAR name="NRES" filter_name="nres_monomer" />
+        </CalculatorFilter>
+        
+        <worst9mer name="9mer" rmsd_lookup_threshold="0.4" confidence="0" />
+        <MoveBeforeFilter name="9mer_monomer" mover="chain1only" filter="9mer" confidence="0" />
+        
         <Geometry name="geom" count_bad_residues="true" confidence="0"/>
+        <MoveBeforeFilter name="geom_monomer" mover="chain1only" filter="geom" confidence="0" />
+        
+        <Ddg name="ddg"  threshold="-10" jump="1" repeats="5" repack="1" confidence="0" scorefxn="sfxn_pure" extreme_value_removal="true"/>
       </FILTERS>
 
     <PROTOCOLS>
@@ -293,12 +310,14 @@ def main():
          <Add mover="rm_csts"/>
          <Add mover="fastRelax"/>
 
-         <Add filter="score_per_res"/>
          <Add filter="vbuns_all_heavy"/>
          <Add filter="sbuns_all_heavy"/>
-         <Add filter="geom"/>
-
-        Add mover="dump_test"/>
+         
+         # dt added filters
+         <Add filter_name="9mer_monomer" />
+         <Add filter_name="score_res_monomer" />
+         <Add filter_name="geom_monomer"/>
+         <Add filter_name="ddg" />
 
     </PROTOCOLS>
 
@@ -391,6 +410,9 @@ def main():
     source_networks = pd.DataFrame.from_dict(d_source_networks)
     source_networks.to_csv(f'{out_dir}/fast_designs/hb_stats/{bn_des}.beforeDesign.csv')
     
+    print("Just after adding constraints")
+    print(p_hal.constraint_set())
+    
     ############################################################################################
     # Reformat the PSSM file. We need to do this as will otherwise restrict
     # hbnet amino acid rotamers at hbnet positions
@@ -477,7 +499,8 @@ def main():
     print(p_hal_tar.pdb_info())
     print(p_hal_tar.fold_tree())
     
-    p_hal_tar.dump_pdb(f'{out_dir}/fast_designs/post_align_mut.pdb')
+    print("Constraints after all mutations and adding target")
+    print(p_hal_tar.constraint_set())
     ############################################################################################
     # Run design
     ###########################################################################################
