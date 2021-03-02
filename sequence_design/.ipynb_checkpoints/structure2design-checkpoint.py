@@ -26,6 +26,7 @@ import hbond_utils as hbu  # for some reason I get an "UnboundLocalError" if I d
 import design_utils 
 
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
+script_dir = os.path.dirname(os.path.realpath(__file__))
 
 def main():
     t0 = time.time()
@@ -52,13 +53,28 @@ def main():
     # Target of binding (usually a receptor)
     parser.add_argument('--tar', type=str, help='Path to target pdb file')
     
+    # Sequence design options
+    parser.add_argument('--sfxn', type=str, default='beta_nov16', help='What score function to use <beta_nov16, HH_19>')
+    parser.add_argument('--pssm_mode', type=str, default='norn1', help='Method to generate and weight pssm')
+    parser.add_argument('--layer_design', type=bool, default=False, help='Use layer design?')
+    
     args = parser.parse_args()
     
     ###############################################################################
     # Init pyrosetta
     ###############################################################################
-    init('-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -beta_nov16 -corrections::beta_nov16 -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
+    # sequence design options
+    if args.pssm_mode == 'norn1':
+      min_aa_probability, sequnce_profile_weight = -0.125, 1.75
+    elif args.pssm_mode == 'norn2':
+      min_aa_probability, sequnce_profile_weight = -0.5, 1
+    elif args.pssm_mode == 'trR':
+      min_aa_probability, sequnce_profile_weight = -0.5, 0.3
+    
+    #init(f'-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -{args.sfxn} -corrections::beta_nov16 -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
 
+    init(f'-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
+    
     # load hal meta data
     with open(args.trb_file, 'rb') as infile:
         trb = pickle.load(infile)
@@ -83,6 +99,17 @@ def main():
     else:
         err = 'Error: A path to the native pdb must be provided either as "--native" or as trb["settings"]["pdb"]'
         sys.exit(err)
+        
+    # Resolve path to score function weights    
+    if args.sfxn == 'beta_nov16':
+      weight_file = f'{script_dir}/protocols/beta16_nostab.wts'
+      flag_file = f'{script_dir}/protocols/beta16_nostab.flg'
+    elif args.sfxn == 'HH_19':
+      weight_file = f'{script_dir}/protocols/HH_run19A_weights_266.wts'
+      flag_file = f'{script_dir}/protocols/HH_run19A_weights_266.flg'
+    else:
+      err = 'Please provide a valid option for the score function to use'
+      sys.exit(err)
         
     # Design basename
     bn_des = args.pdb_in.split('/')[-1].replace('.pdb', '')
@@ -156,173 +183,281 @@ def main():
     ###############################################################################
     # Protocol
     ###############################################################################
-    pack_protocol = """
-    <ROSETTASCRIPTS>
-      <SCOREFXNS>
-            <ScoreFunction name="sfxn_design" weights="beta_nov16">
-                <Reweight scoretype="res_type_constraint" weight="0.3"/>
-                <Reweight scoretype="arg_cation_pi" weight="3"/>
-                <Reweight scoretype="approximate_buried_unsat_penalty" weight="5"/>
-                <Reweight scoretype="omega" weight="5"/>
-                <Reweight scoretype="hbond_sr_bb" weight="2.0"/>
-                <Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5"/>
-                <Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5"/>
-                <Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-1"/>
-                <Reweight scoretype="atom_pair_constraint" weight="0.3"/>
-                <Reweight scoretype="dihedral_constraint" weight="0.1"/>
-                <Reweight scoretype="angle_constraint" weight="0.1"/>
-            </ScoreFunction>
+    def mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, layer_design, pssm_f_updated, hbnet_resnums_str):
+      pack_protocol = f"""
+      <ROSETTASCRIPTS>
+        <SCOREFXNS>
+              <ScoreFunction name="sfxn_design" weights="{weight_file}">
+                  <Reweight scoretype="res_type_constraint" weight="0.3"/>
+                  <Reweight scoretype="arg_cation_pi" weight="3"/>
+                  <Reweight scoretype="approximate_buried_unsat_penalty" weight="5"/>
+                  <Reweight scoretype="omega" weight="5"/>
+                  <Reweight scoretype="hbond_sr_bb" weight="2.0"/>
+                  <Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5"/>
+                  <Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5"/>
+                  <Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-1"/>
+                  <Reweight scoretype="atom_pair_constraint" weight="0.3"/>
+                  <Reweight scoretype="dihedral_constraint" weight="0.1"/>
+                  <Reweight scoretype="angle_constraint" weight="0.1"/>
+              </ScoreFunction>
 
-            <ScoreFunction name="fa_csts" weights="beta_nov16">  # add "weights" or else this sxfn will JUST have these 3 terms
-                <Reweight scoretype="atom_pair_constraint" weight="3"/>
-                <Reweight scoretype="dihedral_constraint" weight="1"/>
-                <Reweight scoretype="angle_constraint" weight="1"/>
-            </ScoreFunction>
+              <ScoreFunction name="fa_csts" weights="{weight_file}">  # add "weights" or else this sxfn will JUST have these 3 terms
+                  <Reweight scoretype="atom_pair_constraint" weight="3"/>
+                  <Reweight scoretype="dihedral_constraint" weight="1"/>
+                  <Reweight scoretype="angle_constraint" weight="1"/>
+              </ScoreFunction>
 
-            <ScoreFunction name="sfxn_pure" weights="beta_nov16">
-            </ScoreFunction>
+              <ScoreFunction name="sfxn_pure" weights="{weight_file}">
+              </ScoreFunction>
+
+              <ScoreFunction name="SFXN3" weights="{weight_file}">  
+                  <Reweight scoretype="res_type_constraint" weight="0.3"/>  # experiment with this value original designs from 3_25_20 were 0.3
+                  <Reweight scoretype="hbond_lr_bb" weight="2"/>
+                  <Reweight scoretype="hbond_sr_bb" weight="1.5"/>
+                  <Reweight scoretype="atom_pair_constraint" weight="1.0" />
+                  <Reweight scoretype="aa_composition" weight="1.0" />
+                  <Reweight scoretype="approximate_buried_unsat_penalty" weight="5.0" />
+                  <Set approximate_buried_unsat_penalty_assume_const_backbone="true" />
+                  <Set approximate_buried_unsat_penalty_natural_corrections1="true" />
+                  <Set approximate_buried_unsat_penalty_hbond_energy_threshold="-1.0" />
+                  <Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-2.5" />
+                  <Set approximate_buried_unsat_penalty_hbond_bonus_ser_to_helix_bb="0.0" />
+              </ScoreFunction>
+        </SCOREFXNS>
+
+        <RESIDUE_SELECTORS>
+            <Layer name="init_core_SCN" select_core="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
+            <Layer name="init_boundary_SCN" select_boundary="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
+            <Layer name="surface_SCN" select_surface="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
+            <Index name="hbnet_res" resnums="{hbnet_resnums_str}"/>
+            <Not name="not_hbnet_res" selector="hbnet_res" />
+            <And name="surface_SCN_and_not_hbnet_res" selectors="surface_SCN,not_hbnet_res"/>
+
+            <Chain name="chainA" chains="1" />
+            <Chain name="chainB" chains="2" />
+            <InterfaceByVector name="interface" grp1_selector="chainA" grp2_selector="chainB" />
+            <And name="interface_chainB" selectors="interface,chainB" />
+            <Not name="not_interface" selector="interface" />
+            <And name="not_interface_chainB" selectors="not_interface,chainB" />
+
+            <ResiduePDBInfoHasLabel name="HOTSPOT_res" property="HOTSPOT" />
+
+            # Layer design selectors
+            <SecondaryStructure name="strands_ini" ss="E" include_terminal_loops="0"  use_dssp="1" />
+            <SecondaryStructure name="loops_ini" ss="L" include_terminal_loops="0"  use_dssp="1" />
+            <PrimarySequenceNeighborhood name="loops_edges_ini" lower="1" upper="1" selector="loops_ini" />
+            <SecondaryStructure name="entire_helix" overlap="0" minH="3" minE="2" include_terminal_loops="false" use_dssp="true" ss="H"/>
+            <SecondaryStructure name="entire_loop" overlap="0" minH="3" minE="2" include_terminal_loops="true" use_dssp="true" ss="L"/>
+            <And name="strands" selectors="strands_ini" />
+            <And name="loops" selectors="loops_ini" />
+            <And name="loops_and_edges" selectors="loops_edges_ini" />
+            <And name="edges" selectors="strands,loops_and_edges"/>
+            <Not name="strand_secondary_structure_ini" selector="loops_and_edges" />
+            <And name="strand_secondary_structure" selectors="strand_secondary_structure_ini" />
             
-            <ScoreFunction name="SFXN3" weights="beta_nov16">  
-                <Reweight scoretype="res_type_constraint" weight="0.3"/>  # experiment with this value original designs from 3_25_20 were 0.3
-                <Reweight scoretype="hbond_lr_bb" weight="2"/>
-                <Reweight scoretype="hbond_sr_bb" weight="1.5"/>
-                <Reweight scoretype="atom_pair_constraint" weight="1.0" />
-                <Reweight scoretype="aa_composition" weight="1.0" />
-                <Reweight scoretype="approximate_buried_unsat_penalty" weight="5.0" />
-                <Set approximate_buried_unsat_penalty_assume_const_backbone="true" />
-                <Set approximate_buried_unsat_penalty_natural_corrections1="true" />
-                <Set approximate_buried_unsat_penalty_hbond_energy_threshold="-1.0" />
-                <Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-2.5" />
-                <Set approximate_buried_unsat_penalty_hbond_bonus_ser_to_helix_bb="0.0" />
-            </ScoreFunction>
-      </SCOREFXNS>
+            <Layer name="surface" select_surface="1" use_sidechain_neighbors="1"
+                           core_cutoff="3.0" surface_cutoff="1.8" />
+            <Layer name="boundary" select_boundary="1" use_sidechain_neighbors="1"
+                           core_cutoff="3.0" surface_cutoff="1.8" />
+            <Layer name="core" select_core="1" use_sidechain_neighbors="1"
+                           core_cutoff="3.0" surface_cutoff="1.8" />
+            <Layer name="all_layers" select_core="1" select_boundary="1" select_surface="1" use_sidechain_neighbors="1" core_cutoff="3.0" surface_cutoff="1.8" />
 
-      <RESIDUE_SELECTORS>
-          <Layer name="init_core_SCN" select_core="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
-          <Layer name="init_boundary_SCN" select_boundary="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
-          <Layer name="surface_SCN" select_surface="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
-          <Index name="hbnet_res" resnums="{1}"/>
-          <Not name="not_hbnet_res" selector="hbnet_res" />
-          <And name="surface_SCN_and_not_hbnet_res" selectors="surface_SCN,not_hbnet_res"/>
+            # strand and loop
+            <And name="strand_layers" selectors="strand_secondary_structure,all_layers" />
+            <And name="strand_surface" selectors="strand_secondary_structure,surface" />
+            <And name="strand_boundary" selectors="strand_secondary_structure,boundary" />
+            <And name="strand_core" selectors="strand_secondary_structure,core" />
+            <And name="loops_and_edges_surface" selectors="loops_and_edges,surface" />
+            <And name="loops_and_edges_boundary" selectors="loops_and_edges,boundary" />
+            <And name="loops_and_edges_core" selectors="loops_and_edges,core" />
+            <And name="edges_core" selectors="edges,core" />
+            <And name="loops_core" selectors="loops,core" />
+            <And name="loops_not_resfile" selectors="loops_and_edges" />
+            <Not name="not_loops" selector="loops_and_edges" />
 
-          <Chain name="chainA" chains="1" />
-          <Chain name="chainB" chains="2" />
-          <InterfaceByVector name="interface" grp1_selector="chainA" grp2_selector="chainB" />
-          <And name="interface_chainB" selectors="interface,chainB" />
-          <Not name="not_interface" selector="interface" />
-          <And name="not_interface_chainB" selectors="not_interface,chainB" />
+            # helix
+            <And name="helix_cap" selectors="entire_loop">
+                <PrimarySequenceNeighborhood lower="1" upper="0" selector="entire_helix"/>
+            </And>
+            <And name="helix_start" selectors="entire_helix">
+                <PrimarySequenceNeighborhood lower="0" upper="1" selector="helix_cap"/>
+            </And>
+                <And name="helix" selectors="entire_helix">
+                <Not selector="helix_start"/>
+            </And>
+            <And name="helix_tail" selectors="entire_loop">
+                <PrimarySequenceNeighborhood lower="0" upper="1" selector="entire_helix"/>
+            </And>
+            <And name="helix_end" selectors="entire_helix">
+                <PrimarySequenceNeighborhood lower="1" upper="0" selector="helix_tail"/>
+            </And>
+            <And name="surface_helix_start" selectors="surface,helix_start" />
+            <And name="surface_helix" selectors="surface,helix" />
 
-          <ResiduePDBInfoHasLabel name="HOTSPOT_res" property="HOTSPOT" />
-      </RESIDUE_SELECTORS>
+            <And name="boundary_helix_start" selectors="boundary,helix_start" />
+            <And name="boundary_helix" selectors="boundary,helix" />
 
-      <TASKOPERATIONS>
-          <SeqprofConsensus name="pssm_cutoff" filename="{0}" min_aa_probability="-1" convert_scores_to_probabilities="0" probability_larger_than_current="0" debug="1" ignore_pose_profile_length_mismatch="1"/>
-          SeqprofConsensus name="pssm_cutoff" filename="{0}" min_aa_probability="-0.5" convert_scores_to_probabilities="0" probability_larger_than_current="0" debug="1" ignore_pose_profile_length_mismatch="1"/>
-          <RestrictAbsentCanonicalAAS name="noCys" keep_aas="ADEFGHIKLMNPQRSTVWY"/>
-          <PruneBuriedUnsats name="prune_buried_unsats" allow_even_trades="false" atomic_depth_cutoff="3.5" minimum_hbond_energy="-0.5" />
-          <LimitAromaChi2 name="limitchi2" chi2max="110" chi2min="70" include_trp="True"/>
-          <ExtraRotamersGeneric name="ex1_ex2aro" ex1="1" ex2aro="1"/>
-          <IncludeCurrent name="ic"/>
-          <RestrictResiduesToRepacking name="fix_hbnet_residues" residues="{1}"/>
+            <And name="core_helix_start" selectors="core,helix_start" />
+            <And name="core_helix" selectors="core,helix" />
+        </RESIDUE_SELECTORS>
 
-          <OperateOnResidueSubset name="ld_surface_not_hbnets" selector="surface_SCN_and_not_hbnet_res">
-              <RestrictAbsentCanonicalAASRLT aas="EDHKRQNSTPG"/>
-          </OperateOnResidueSubset>
-          
-          <OperateOnResidueSubset name="repack_hotspots" selector="HOTSPOT_res">
-              <RestrictToRepackingRLT/>
-          </OperateOnResidueSubset>
-          
-          <OperateOnResidueSubset name="repack_interface_chainB" selector="interface_chainB">
-              <RestrictToRepackingRLT/>
-          </OperateOnResidueSubset>
-        
-          <OperateOnResidueSubset name="freeze_not_interface_chainB" selector="not_interface_chainB">
-              <PreventRepackingRLT/>
-          </OperateOnResidueSubset>
-      </TASKOPERATIONS>
+        <TASKOPERATIONS>
+            <SeqprofConsensus name="pssm_cutoff" filename="{pssm_f_updated}" min_aa_probability="{min_aa_probability}" convert_scores_to_probabilities="0" probability_larger_than_current="0" debug="1" ignore_pose_profile_length_mismatch="1"/>
+            <RestrictAbsentCanonicalAAS name="noCys" keep_aas="ADEFGHIKLMNPQRSTVWY"/>
+            <PruneBuriedUnsats name="prune_buried_unsats" allow_even_trades="false" atomic_depth_cutoff="3.5" minimum_hbond_energy="-0.5" />
+            <LimitAromaChi2 name="limitchi2" chi2max="110" chi2min="70" include_trp="True"/>
+            <ExtraRotamersGeneric name="ex1_ex2aro" ex1="1" ex2aro="1"/>
+            <IncludeCurrent name="ic"/>
+            <RestrictResiduesToRepacking name="fix_hbnet_residues" residues="{hbnet_resnums_str}"/>
 
-      <MOVERS>
-        <FavorSequenceProfile name="FSP" scaling="none" weight="1" pssm="{0}" scorefxns="SFXN3" chain="1"/>
-        <SwitchResidueTypeSetMover name="to_fullatom" set="fa_standard"/>
+            <OperateOnResidueSubset name="ld_surface_not_hbnets" selector="surface_SCN_and_not_hbnet_res">
+                <RestrictAbsentCanonicalAASRLT aas="EDHKRQNSTPG"/>
+            </OperateOnResidueSubset>
 
-        PackRotamersMover name="pack" scorefxn="sfxn_pure" task_operations="pssm_cutoff,noCys"/>
+            <OperateOnResidueSubset name="repack_hotspots" selector="HOTSPOT_res">
+                <RestrictToRepackingRLT/>
+            </OperateOnResidueSubset>
 
-        MinMover name="hard_min" scorefxn="sfxn_pure" bb="1" chi="1"/>  # is anything calling this?
-        <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="ex1_ex2aro,ic">
-            <MoveMap name="MM">                
-                <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
-                <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
-                <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
-                <Jump number="1" setting="true" />
-            </MoveMap>
-        </FastRelax>
-        
-        <ClearConstraintsMover name="rm_csts" />
+            <OperateOnResidueSubset name="repack_interface_chainB" selector="interface_chainB">
+                <RestrictToRepackingRLT/>
+            </OperateOnResidueSubset>
 
-        <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
-            <MoveMap name="MM">                
-                <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
-                <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
-                <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
-                <Jump number="1" setting="true" />
-            </MoveMap>
-        </FastDesign>
+            <OperateOnResidueSubset name="freeze_not_interface_chainB" selector="not_interface_chainB">
+                <PreventRepackingRLT/>
+            </OperateOnResidueSubset>
+            
+            # layer design task ops
+            # strand and loops
+            <OperateOnResidueSubset name="design_loops_surface" selector="loops_and_edges_surface">
+                    <RestrictAbsentCanonicalAASRLT aas="DEGKNPQRST"/>
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="design_loops_boundary" selector="loops_and_edges_boundary">
+                    <RestrictAbsentCanonicalAASRLT aas="ADEGKNPQRSTV"/>
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="design_loops_core" selector="loops_core">
+                    <RestrictAbsentCanonicalAASRLT aas="AGILPV"/>
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="design_edges_core" selector="edges_core">
+                    <RestrictAbsentCanonicalAASRLT aas="AGPVILMWFY"/>
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="strand_surface_aa" selector="strand_surface">
+                    <RestrictAbsentCanonicalAASRLT aas="EHKRQST"/>
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="strand_boundary_aa" selector="strand_boundary">
+                    <RestrictAbsentCanonicalAASRLT aas="EFIKLQRSTVWY"/>
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="strand_core_aa" selector="strand_core">
+                    <RestrictAbsentCanonicalAASRLT aas="VILMWFY"/>
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="design_core" selector="core">
+                    <RestrictAbsentCanonicalAASRLT aas="VILMWFYAGP"/>
+            </OperateOnResidueSubset>
 
-        <SwitchChainOrder name="chain1onlypre" chain_order="1" />
-        <ScoreMover name="scorepose" scorefxn="sfxn_pure" verbose="false" />
-        <ParsedProtocol name="chain1only">  # deletes everything BUT chain 1 (A) and then scores it. (Note: It does not alter the pose after it exits)
-            <Add mover="chain1onlypre" />
-            <Add mover="scorepose" />
-        </ParsedProtocol>
+            # helix:
+            <OperateOnResidueSubset name="ld1" selector="surface_helix_start" >
+                <RestrictAbsentCanonicalAASRLT aas="DEHKPQR" />
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="ld2" selector="surface_helix" >
+                <RestrictAbsentCanonicalAASRLT aas="EHKQR" />
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="ld5" selector="boundary_helix_start" >
+                <RestrictAbsentCanonicalAASRLT aas="ADEHIKLMNPQRSTVWY" />
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="ld6" selector="boundary_helix" >
+                <RestrictAbsentCanonicalAASRLT aas="ADEFHIKLMNQRSTVWY" />
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="ld9" selector="core_helix_start" >
+                <RestrictAbsentCanonicalAASRLT aas="AFILMPVWY" />
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="ld10" selector="core_helix" >
+                <RestrictAbsentCanonicalAASRLT aas="AFILMVWY" />
+            </OperateOnResidueSubset>
+            <OperateOnResidueSubset name="ld13" selector="helix_cap" >
+                <RestrictAbsentCanonicalAASRLT aas="DNST" />
+            </OperateOnResidueSubset>
+        </TASKOPERATIONS>
 
-      </MOVERS>
+        <MOVERS>
+          <FavorSequenceProfile name="FSP" scaling="none" weight="{sequnce_profile_weight}" pssm="{pssm_f_updated}" scorefxns="SFXN3" chain="1"/>
 
-      <FILTERS>
-        <BuriedUnsatHbonds name="vbuns_all_heavy" report_all_heavy_atom_unsats="true" scorefxn="sfxn_pure" ignore_surface_res="false" print_out_info_to_pdb="true" atomic_depth_selection="5.5" burial_cutoff="1000" confidence="0" />
-        <BuriedUnsatHbonds name="sbuns_all_heavy" report_all_heavy_atom_unsats="true" scorefxn="sfxn_pure" cutoff="4" residue_surface_cutoff="20.0" ignore_surface_res="true" print_out_info_to_pdb="true" dalphaball_sasa="1" probe_radius="1.1" atomic_depth_selection="5.5" atomic_depth_deeper_than="false" confidence="0" />
-        
-        # dt added filters
-        <ScoreType name="score" scorefxn="sfxn_pure" score_type="total_score" threshold="0.0" confidence="0" />
-        <MoveBeforeFilter name="score_monomer" mover="chain1only" filter="score" confidence="0" />
-        
-        <ResidueCount name="nres" confidence="0" />
-        <MoveBeforeFilter name="nres_monomer" mover="chain1only" filter="nres" confidence="0" />
-        
-        <CalculatorFilter name="score_res_monomer" confidence="0" equation="SCORE/NRES" threshold="-2.1">
-          <VAR name="SCORE" filter_name="score_monomer" />
-          <VAR name="NRES" filter_name="nres_monomer" />
-        </CalculatorFilter>
-        
-        <worst9mer name="9mer" rmsd_lookup_threshold="0.4" confidence="0" />
-        <MoveBeforeFilter name="9mer_monomer" mover="chain1only" filter="9mer" confidence="0" />
-        
-        <Geometry name="geom" count_bad_residues="true" confidence="0"/>
-        <MoveBeforeFilter name="geom_monomer" mover="chain1only" filter="geom" confidence="0" />
-        
-        <Ddg name="ddg"  threshold="-10" jump="1" repeats="5" repack="1" confidence="0" scorefxn="sfxn_pure" extreme_value_removal="true"/>
-      </FILTERS>
+          <SwitchResidueTypeSetMover name="to_fullatom" set="fa_standard"/>
 
-    <PROTOCOLS>
-         <Add mover="FSP"/>
-         add one round of fastDesign with npz constraints here
-         <Add mover="fastDesign"/>
-         <Add mover="rm_csts"/>
-         <Add mover="fastRelax"/>
+          <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="ex1_ex2aro,ic">
+              <MoveMap name="MM">                
+                  <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
+                  <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
+                  <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
+                  <Jump number="1" setting="true" />
+              </MoveMap>
+          </FastRelax>
 
-         <Add filter="vbuns_all_heavy"/>
-         <Add filter="sbuns_all_heavy"/>
-         
-         # dt added filters
-         <Add filter_name="9mer_monomer" />
-         <Add filter_name="score_res_monomer" />
-         <Add filter_name="geom_monomer"/>
-         <Add filter_name="ddg" />
+          <ClearConstraintsMover name="rm_csts" />
 
-    </PROTOCOLS>
+          <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB{",strand_surface_aa,strand_boundary_aa,strand_core_aa,design_loops_surface,design_loops_boundary,design_loops_core,design_edges_core,ld1,ld2,ld5,ld6,ld9,ld10,ld13" if layer_design else ""}" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
+              <MoveMap name="MM">                
+                  <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
+                  <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
+                  <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
+                  <Jump number="1" setting="true" />
+              </MoveMap>
+          </FastDesign>
 
-    </ROSETTASCRIPTS>
-    """
+          <SwitchChainOrder name="chain1onlypre" chain_order="1" />
+          <ScoreMover name="scorepose" scorefxn="sfxn_pure" verbose="false" />
+          <ParsedProtocol name="chain1only">  # deletes everything BUT chain 1 (A) and then scores it. (Note: It does not alter the pose after it exits)
+              <Add mover="chain1onlypre" />
+              <Add mover="scorepose" />
+          </ParsedProtocol>
+
+        </MOVERS>
+
+        <FILTERS>
+          <BuriedUnsatHbonds name="vbuns_all_heavy" report_all_heavy_atom_unsats="true" scorefxn="sfxn_pure" ignore_surface_res="false" print_out_info_to_pdb="true" atomic_depth_selection="5.5" burial_cutoff="1000" confidence="0" />
+          <BuriedUnsatHbonds name="sbuns_all_heavy" report_all_heavy_atom_unsats="true" scorefxn="sfxn_pure" cutoff="4" residue_surface_cutoff="20.0" ignore_surface_res="true" print_out_info_to_pdb="true" dalphaball_sasa="1" probe_radius="1.1" atomic_depth_selection="5.5" atomic_depth_deeper_than="false" confidence="0" />
+
+          # dt added filters
+          <ScoreType name="score" scorefxn="sfxn_pure" score_type="total_score" threshold="0.0" confidence="0" />
+          <MoveBeforeFilter name="score_monomer" mover="chain1only" filter="score" confidence="0" />
+
+          <ResidueCount name="nres" confidence="0" />
+          <MoveBeforeFilter name="nres_monomer" mover="chain1only" filter="nres" confidence="0" />
+
+          <CalculatorFilter name="score_res_monomer" confidence="0" equation="SCORE/NRES" threshold="-2.1">
+            <VAR name="SCORE" filter_name="score_monomer" />
+            <VAR name="NRES" filter_name="nres_monomer" />
+          </CalculatorFilter>
+
+          <worst9mer name="9mer" rmsd_lookup_threshold="0.4" confidence="0" />
+          <MoveBeforeFilter name="9mer_monomer" mover="chain1only" filter="9mer" confidence="0" />
+
+          <Geometry name="geom" count_bad_residues="true" confidence="0"/>
+          <MoveBeforeFilter name="geom_monomer" mover="chain1only" filter="geom" confidence="0" />
+
+          <Ddg name="ddg"  threshold="-10" jump="1" repeats="5" repack="1" confidence="0" scorefxn="sfxn_pure" extreme_value_removal="true"/>
+        </FILTERS>
+
+        <PROTOCOLS>
+             <Add mover="FSP"/>
+             add one round of fastDesign with npz constraints here
+             <Add mover="fastDesign"/>
+             <Add mover="rm_csts"/>
+             <Add mover="fastRelax"/>
+
+             <Add filter="vbuns_all_heavy"/>
+             <Add filter="sbuns_all_heavy"/>
+
+             # dt added filters
+             Add filter_name="9mer_monomer" />
+             <Add filter_name="score_res_monomer" />
+             <Add filter_name="geom_monomer"/>
+             <Add filter_name="ddg" />
+
+        </PROTOCOLS>
+
+      </ROSETTASCRIPTS>
+      """
+      return pack_protocol
     
     ############################################################################################
     # Setup atom pair constraints for the hbonds
@@ -506,13 +641,12 @@ def main():
     ###########################################################################################
     hbnet_resnums_str = ','.join([str(x) for x in hbnet_resnums])
     
-    xml_rd1 = pack_protocol.format(pssm_f_updated, hbnet_resnums_str)  # just a string replacement operation
+    xml_rd1 = mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, args.layer_design, pssm_f_updated, hbnet_resnums_str)  # just a string replacement operation
     task_relax = rosetta_scripts.SingleoutputRosettaScriptsTask(xml_rd1)
     task_relax.setup() # syntax check
     print("Running protocol")
     packed_pose = task_relax(p_hal_tar)
     p_packed = packed_pose.pose
-    p_packed = p_hal_tar
     t1 = time.time()
     print("Design took ", t1-t0)
 
@@ -529,28 +663,6 @@ def main():
     p_packed.dump_pdb(f'{out_dir}/fast_designs/complex/{bn_des}_complex.pdb')
     chA = p_packed.split_by_chain()[1]
     chA.dump_pdb(f'{out_dir}/fast_designs/chA/{bn_des}.pdb')
-    
-#     #========================================================================
-#     # Extra filters
-#     #========================================================================
-#
-#     # Filter for H1 geometry
-#     H1_positions = np.flatnonzero(np.core.defchararray.find(npz_scaffold['annotation'],'H1')!=-1) + 1
-#     phi_angles = np.array([packed_pose.pose.phi(pos) for pos in H1_positions[5:-1]]) # skip first turn and last residue
-#     psi_angles = np.array([packed_pose.pose.psi(pos) for pos in H1_positions[5:-1]]) # skip first turn and last residue
-#     bad_phi_count = phi_angles[(phi_angles > -50.0) | (phi_angles < -80.0)].size
-#     bad_psi_count = psi_angles[(psi_angles > -25.0) | (psi_angles < -55.0)].size
-#     df_scores['bad_H1_phi_count'] = bad_phi_count
-#     df_scores['bad_H1_psi_count'] = bad_psi_count
-#
-#     # Filter for H3 geometry
-#     H3_positions = np.flatnonzero(np.core.defchararray.find(npz_scaffold['annotation'],'H3')!=-1) + 1
-#     phi_angles = np.array([packed_pose.pose.phi(pos) for pos in H3_positions[1:-1]]) # skip first turn and last residue
-#     psi_angles = np.array([packed_pose.pose.psi(pos) for pos in H3_positions[1:-1]]) # skip first turn and last residue
-#     bad_phi_count = phi_angles[(phi_angles > -50.0) | (phi_angles < -80.0)].size
-#     bad_psi_count = psi_angles[(psi_angles > -25.0) | (psi_angles < -55.0)].size
-#     df_scores['bad_H3_phi_count'] = bad_phi_count
-#     df_scores['bad_H3_psi_count'] = bad_psi_count
 
     #Store the native hbond energies and the corresponding designed hbonds
     df_hbnets_design = hbu.compute_hbond_energies(f'fast_designs/chA/{bn_des}.pdb', from_pose=packed_pose.pose, vsasa_cutoff=0.1, only_return_buried_sc_hbonds=False, exclude_bb=False)
