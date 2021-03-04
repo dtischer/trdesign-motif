@@ -308,7 +308,16 @@ def main(argv):
   with open(f"{o.out}.set","w") as outfile:
     outfile.write(f'{o.__dict__}\n')
     
-  for n in range(o.num):
+  # read the checkpoint file, if it exists
+  f_checkpoint = f'{o.out}.chkp'
+  if os.path.exists(f_checkpoint):
+    with open(f_checkpoint, 'r') as f_in:
+      hals_done = f_in.read().splitlines()
+      last_completed_hal = int(hals_done[-1]) if len(hals_done) != 0 else -1
+  else:
+    last_completed_hal = -1
+      
+  for n in range(last_completed_hal + 1, o.num):
     if o.predict_loss is not None:
       ######################################
       # Predicting loss(es) from single sequence
@@ -521,6 +530,10 @@ def main(argv):
         pdb_feat_ = apply_move(pdb_feat, move, [1,2])
         output["acc"] = get_dist_acc(output["feat"], pdb_feat_, inputs["pdb_mask"])[0]
         save_result(output, f"{o.out}_{n}_{s}_{loop_len}", o)
+
+    # record completed job numbers in the checkpoint file
+    with open(f_checkpoint, 'a+') as f_out:
+      f_out.write(f'{n}\n')
 
 #################################################################################
 def do_scwrl(inputs,ouputs):
