@@ -65,7 +65,7 @@ def main():
     ###############################################################################
     # sequence design options
     if args.pssm_mode == 'norn1':
-      min_aa_probability, sequnce_profile_weight = -0.125, 1.75
+      min_aa_probability, sequnce_profile_weight = -0.125, 1.75   # cutoff for packer, change bias in score function
     elif args.pssm_mode == 'norn2':
       min_aa_probability, sequnce_profile_weight = -0.5, 1
     elif args.pssm_mode == 'trR':
@@ -73,7 +73,7 @@ def main():
     
     #init(f'-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -{args.sfxn} -corrections::beta_nov16 -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
 
-    init(f'-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
+    #init(f'-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
     
     # load hal meta data
     with open(args.trb_file, 'rb') as infile:
@@ -111,6 +111,9 @@ def main():
       err = 'Please provide a valid option for the score function to use'
       sys.exit(err)
         
+    # init pyR
+    init(f'@{flag_file}')
+    
     # Design basename
     bn_des = args.pdb_in.split('/')[-1].replace('.pdb', '')
     
@@ -187,20 +190,6 @@ def main():
       pack_protocol = f"""
       <ROSETTASCRIPTS>
         <SCOREFXNS>
-              <ScoreFunction name="sfxn_design" weights="{weight_file}">
-                  <Reweight scoretype="res_type_constraint" weight="0.3"/>
-                  <Reweight scoretype="arg_cation_pi" weight="3"/>
-                  <Reweight scoretype="approximate_buried_unsat_penalty" weight="5"/>
-                  <Reweight scoretype="omega" weight="5"/>
-                  <Reweight scoretype="hbond_sr_bb" weight="2.0"/>
-                  <Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5"/>
-                  <Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5"/>
-                  <Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-1"/>
-                  <Reweight scoretype="atom_pair_constraint" weight="0.3"/>
-                  <Reweight scoretype="dihedral_constraint" weight="0.1"/>
-                  <Reweight scoretype="angle_constraint" weight="0.1"/>
-              </ScoreFunction>
-
               <ScoreFunction name="fa_csts" weights="{weight_file}">  # add "weights" or else this sxfn will JUST have these 3 terms
                   <Reweight scoretype="atom_pair_constraint" weight="3"/>
                   <Reweight scoretype="dihedral_constraint" weight="1"/>
@@ -211,17 +200,21 @@ def main():
               </ScoreFunction>
 
               <ScoreFunction name="SFXN3" weights="{weight_file}">  
-                  <Reweight scoretype="res_type_constraint" weight="0.3"/>  # experiment with this value original designs from 3_25_20 were 0.3
-                  <Reweight scoretype="hbond_lr_bb" weight="2"/>
-                  <Reweight scoretype="hbond_sr_bb" weight="1.5"/>
+                  <Reweight scoretype="res_type_constraint" weight="{sequnce_profile_weight}"/>  # experiment with this value original designs from 3_25_20 were 0.3
+                  <Reweight scoretype="hbond_lr_bb" weight="2"/>            #primarily affects beta sheets
+                  <Reweight scoretype="hbond_sr_bb" weight="1.5"/>      # primarily affect alpha helix
                   <Reweight scoretype="atom_pair_constraint" weight="1.0" />
-                  <Reweight scoretype="aa_composition" weight="1.0" />
-                  <Reweight scoretype="approximate_buried_unsat_penalty" weight="5.0" />
+                  <Reweight scoretype="aa_composition" weight="1.0" />                                                       # composition constraint mover
+                  Reweight scoretype="omega" weight="5"/>                           # penalty on omega bb angle. check if omega distribution is near wt or not. if not, add in
+                  
+                  <Reweight scoretype="approximate_buried_unsat_penalty" weight="5.0" />  # ask bcov what is current state of the art
                   <Set approximate_buried_unsat_penalty_assume_const_backbone="true" />
                   <Set approximate_buried_unsat_penalty_natural_corrections1="true" />
                   <Set approximate_buried_unsat_penalty_hbond_energy_threshold="-1.0" />
                   <Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-2.5" />
                   <Set approximate_buried_unsat_penalty_hbond_bonus_ser_to_helix_bb="0.0" />
+                  
+                  
               </ScoreFunction>
         </SCOREFXNS>
 
@@ -303,7 +296,8 @@ def main():
         </RESIDUE_SELECTORS>
 
         <TASKOPERATIONS>
-            <SeqprofConsensus name="pssm_cutoff" filename="{pssm_f_updated}" min_aa_probability="{min_aa_probability}" convert_scores_to_probabilities="0" probability_larger_than_current="0" debug="1" ignore_pose_profile_length_mismatch="1"/>
+            <InitializeFromCommandline name="init" />
+            <SeqprofConsensus name="pssm_cutoff" filename="{pssm_f_updated}" min_aa_probability="{min_aa_probability}" convert_scores_to_probabilities="0" probability_larger_than_current="0" debug="1" ignore_pose_profile_length_mismatch="1"/>  # restricts aa the packer can use based on a pssm.
             <RestrictAbsentCanonicalAAS name="noCys" keep_aas="ADEFGHIKLMNPQRSTVWY"/>
             <PruneBuriedUnsats name="prune_buried_unsats" allow_even_trades="false" atomic_depth_cutoff="3.5" minimum_hbond_energy="-0.5" />
             <LimitAromaChi2 name="limitchi2" chi2max="110" chi2min="70" include_trp="True"/>
@@ -379,27 +373,27 @@ def main():
         </TASKOPERATIONS>
 
         <MOVERS>
-          <FavorSequenceProfile name="FSP" scaling="none" weight="{sequnce_profile_weight}" pssm="{pssm_f_updated}" scorefxns="SFXN3" chain="1"/>
+          <FavorSequenceProfile name="FSP" scaling="none" weight="1.0" pssm="{pssm_f_updated}" scorefxns="SFXN3" chain="1"/>  # interacts with res type constraint
 
           <SwitchResidueTypeSetMover name="to_fullatom" set="fa_standard"/>
 
-          <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="ex1_ex2aro,ic">
+          <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="init,ex1_ex2aro,ic">
               <MoveMap name="MM">                
                   <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
                   <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
                   <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
-                  <Jump number="1" setting="true" />
+                  <Jump number="1" setting="false" />
               </MoveMap>
           </FastRelax>
 
           <ClearConstraintsMover name="rm_csts" />
 
-          <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB{",strand_surface_aa,strand_boundary_aa,strand_core_aa,design_loops_surface,design_loops_boundary,design_loops_core,design_edges_core,ld1,ld2,ld5,ld6,ld9,ld10,ld13" if layer_design else ""}" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
+          <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="init,ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB{",strand_surface_aa,strand_boundary_aa,strand_core_aa,design_loops_surface,design_loops_boundary,design_loops_core,design_edges_core,ld1,ld2,ld5,ld6,ld9,ld10,ld13" if layer_design else ""}" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
               <MoveMap name="MM">                
                   <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
                   <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
                   <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
-                  <Jump number="1" setting="true" />
+                  <Jump number="1" setting="false" />
               </MoveMap>
           </FastDesign>
 
@@ -444,8 +438,8 @@ def main():
              <Add mover="rm_csts"/>
              <Add mover="fastRelax"/>
 
-             <Add filter="vbuns_all_heavy"/>
-             <Add filter="sbuns_all_heavy"/>
+             <Add filter="vbuns_all_heavy"/>   #Very buns
+             <Add filter="sbuns_all_heavy"/>    #Surface buns. "Almost doesn't matter" -Chirs Norn
 
              # dt added filters
              Add filter_name="9mer_monomer" />

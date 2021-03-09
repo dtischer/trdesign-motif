@@ -759,7 +759,7 @@ class ContigSearch(Layer):
   def __init__(self, ptn_geo, contigs, fix_N=False, fix_C=False, keep_order=True):
     super(ContigSearch, self).__init__()
     self.ptn_geo = ptn_geo
-    self.contigs = contigs  # [[s1,e1], [s2:e2],...]
+    self.contigs = contigs  # [[s1,e1], [s2,e2],...] 
     self.ncon = len(contigs)
     self.con_lens = np.array([y - x + 1 for x,y in contigs])
     self.fix_N = fix_N
