@@ -551,6 +551,14 @@ def main(argv):
         output["acc"] = get_dist_acc(output["feat"], pdb_feat_, inputs["pdb_mask"])[0]
         save_result(output, f"{o.out}_{n}_{s}_{loop_len}", o)
 
+        trb = output['track_best']
+        trb['settings'] = vars(o)
+        trb['con_ref_idx0'] = [np.where(pdb_mask)[0]]
+        trb['con_hal_idx0'] = [np.where(apply_move(pdb_mask,move,[0]))[0]]
+        pdb_idx = kw_OptSettings['pdb_idx']
+        trb['con_ref_pdb_idx'] = [pdb_idx[idx0] for idx0 in trb['con_ref_idx0'][0]]
+        trb['con_hal_pdb_idx'] = [('A', idx0+1) for idx0 in trb['con_hal_idx0'][0]]
+
     # record completed job numbers in the checkpoint file
     with open(f_checkpoint, 'a+') as f_out:
       f_out.write(f'{n}\n')
