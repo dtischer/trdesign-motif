@@ -145,7 +145,7 @@ def main(argv):
   if o.pdb is None and o.len is None and o.predict_loss is None:
     err = f"ERROR: --pdb={o.pdb} or --len={o.len} or --len={o.predict_loss} must be defined "
     sys.exit(err)
-  if ('-' in o.len) and (o.cs_method == 'ia'):
+  if (o.cs_method == 'ia') and ('-' in o.len):
     err = f"ERROR: Proteins must be a fixed length when using cs_method 'ia'"
     sys.exit(err)
 
@@ -156,6 +156,9 @@ def main(argv):
   if o.contigs is not None and o.loss_bkg is None: o.loss_bkg = 1.0
   if o.hbnets is not None and o.loss_hbn is None: o.loss_hbn = 1.0
   if o.seq_mode == 'MSA' and o.feat_drop is None: o.feat_drop = 0.2
+    
+  if o.mask_v2 is not None and o.loss_pdb is None: o.loss_pdb = 1.0
+  if o.mask_v2 is not None and o.loss_bkg is None: o.loss_bkg = 1.0
    
   print(o.__dict__)
     
@@ -181,7 +184,10 @@ def main(argv):
     'loss_aa_ref': o.loss_aa_ref,
     'loss_keep_out': o.loss_keep_out,
     'loss_hbn': o.loss_hbn,
+    'loss_pdb': o.loss_pdb,
+    'loss_bkg': o.loss_bkg,
     'loss_contigs': False if o.contigs is None else True,
+    'add_pdb_mask': False if o.mask_v2 is None else True,
     'cs_method': o.cs_method,
     'serial': o.serial, 
     'n_models': o.n_models,
@@ -224,6 +230,8 @@ def main(argv):
     'weights': weights,
   }
 
+  print(kw_graph_setup)
+  
   ##########################################
   # Gather pdb geometries, bkg distributions
   ##########################################
@@ -251,10 +259,12 @@ def main(argv):
       kw_hbnets["contigs"] = parse_contigs(o.hbnets, pdb_out["pdb_idx"])
     
     # gather kw for ivan's contig search
-    idx = cons2idxs(parse_contigs(o.contigs, pdb_out["pdb_idx"]))
-    idx = np.array(idx)
-    kw_probe_bsite['idx'] = idx
-    kw_probe_bsite['bsite'] = pdb_out['feat'][idx[:,None], idx[None,:]]
+    if (o.contigs is not None) and (o.cs_method == 'ia'):
+      idx = cons2idxs(parse_contigs(o.contigs, pdb_out["pdb_idx"]))
+      idx = np.array(idx)
+      kw_probe_bsite['idx'] = idx
+      kw_probe_bsite['bsite'] = pdb_out['feat'][idx[:,None], idx[None,:]]
+      kw_probe_bsite['L'] = int(L_range[0])  # currently must be a fixed single length
     
     # spike in the pdb sequence
     seq_start = None
@@ -309,7 +319,6 @@ def main(argv):
   # setup design model
   ##########################################
   print("setting up design model")
-  kw_probe_bsite['L'] = int(np.random.choice(L_range))  # currently must be a fixed single length
   model = mk_design_model(**kw_graph_setup)
 
   ##########################################
