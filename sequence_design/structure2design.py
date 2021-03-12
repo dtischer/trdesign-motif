@@ -112,7 +112,7 @@ def main():
       sys.exit(err)
         
     # init pyR
-    init(f'@{flag_file}')
+    init(f'@{flag_file} -holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc')
     
     # Design basename
     bn_des = args.pdb_in.split('/')[-1].replace('.pdb', '')
@@ -422,9 +422,6 @@ def main():
             <VAR name="NRES" filter_name="nres_monomer" />
           </CalculatorFilter>
 
-          <worst9mer name="9mer" rmsd_lookup_threshold="0.4" confidence="0" />
-          <MoveBeforeFilter name="9mer_monomer" mover="chain1only" filter="9mer" confidence="0" />
-
           <Geometry name="geom" count_bad_residues="true" confidence="0"/>
           <MoveBeforeFilter name="geom_monomer" mover="chain1only" filter="geom" confidence="0" />
 
@@ -442,7 +439,6 @@ def main():
              <Add filter="sbuns_all_heavy"/>    #Surface buns. "Almost doesn't matter" -Chirs Norn
 
              # dt added filters
-             Add filter_name="9mer_monomer" />
              <Add filter_name="score_res_monomer" />
              <Add filter_name="geom_monomer"/>
              <Add filter_name="ddg" />
