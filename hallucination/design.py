@@ -64,7 +64,7 @@ def main(argv):
   p.add_argument('--save_npz',      default=True, type=str2bool, help='save data for PyRosetta model building')
   p.add_argument('--save_pdb',      default=False, type=str2bool, help='use magic to quickly generate PDB structure')
   p.add_argument('--track_step',    default=None, type=int, help='save losses from trajectory every X steps')
-  p.add_argument('--track_best',    default=True, type=str2bool, help='save intermediate features from best step')
+  p.add_argument('--track_best',    default=False, type=str2bool, help='save intermediate features from best step. If set to False, a minimal .trb file is still output with contig indices and final losses.')
   p.add_argument('--scwrl',         default=False, type=str2bool, help='use scwrl to add sidechains [if --save_pdb]')
   p.add_argument('--force_contig_geo', default=False, type=str2bool, help='Replace hallucinated contig 6D predictions with 6D one-hot geometry of the reference pdb')
   #-------------------------------------------------------------------------------------
@@ -558,6 +558,12 @@ def save_result(out, pre, o):
   if o.track_best:
     with open(f'{pre}.trb', 'wb') as outfile:
       pickle.dump(out['track_best'], outfile)
+  else: # output minimal tracker
+    with open(f'{pre}.trb', 'wb') as outfile:
+      trk = {k:out['track_best'][k] for k in ['con_ref_idx0', 'con_hal_idx0', 
+                                              'con_ref_pdb_idx', 'con_hal_pdb_idx',
+                                              'loss_nodrop', 'settings']}
+      pickle.dump(trk, outfile)
       
   # save PDB
   if o.save_pdb:
