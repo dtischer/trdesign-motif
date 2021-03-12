@@ -8,7 +8,7 @@ warnings.filterwarnings('ignore',category=FutureWarning)
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-import sys, subprocess, argparse
+import sys, subprocess, argparse, re
 from subprocess import DEVNULL
 import numpy as np
 import matplotlib
@@ -49,6 +49,12 @@ def main(argv):
   ex: '10-15:5'   replace pos. 10-15 with fixed-loop of length 5
   ex: '10-15'     remove pdb cst. from positions 10 to 15
   ex: '10'        remove pdb cst. from position 10''')
+  p.add_argument('--mask_v2', '-m2',    default=None, type=str, help='''set linker lengths between fragments of a refernce pdb
+  use '<ch>start-end, min_insertion-max_insertion, <ch>start-end, min_insertion-max_insertion ...'
+  ex: 'A12-24,2-5,A36-42,20-50,B6-11'
+  You can reorder the contigs from the pdb too!
+  ex: 'B6-11,9-21,A36-42,20-30,A12-24'
+  ''')
   p.add_argument('--stat_place',    default=False, type=str2bool, help='Contigs are randomly placed (preserving order) but do not move')
   p.add_argument('--sam', '-s',     default=1, type=int, help='number of samples per design run [if --mask]')
   p.add_argument('--spike',         default=0.0, type=float, help='initialize design from pdb seq')
@@ -225,10 +231,11 @@ def main(argv):
   if o.pdb is not None:
     print(f"extracting features from pdb={o.pdb}")
     if o.contigs is not None:
-      chains = set()
-      for con in o.contigs.split(','):
-        chains |= {con[0]}
-      chains = list(chains)
+      chains = re.findall(r'[A-Z]', o.contigs)
+      chains = list(set(chains))
+    if o.mask_v2 is not None:
+      chains = re.findall(r'[A-Z]', o.mask_v2)
+      chains = list(set(chains))
     else:
       chains = o.chain
    
@@ -529,11 +536,13 @@ def main(argv):
         print('checking protein length:', L, move[0], move[1])
         new_len = L + len(move[0]) - len(move[1])
 
-        # apply move to pdb/mask/msa/bkg
-        print('afdadsf', pdb_mask)
-        inputs = {"pdb":      apply_move(desired_feat,move,[1,2]),
-                  "pdb_mask": apply_move(pdb_mask[None],move,[1]),
-                  "I":        None,  #apply_move(seq_start,move,[2]),
+        # apply the mask to the ref pdb features
+        feat_hal, mask_1d = apply_mask(mask, pdb_out)
+        new_len = mask_1d.shape[-1]
+        
+        inputs = {"pdb":      feat_hal,
+                  "pdb_mask": mask_1d,
+                  "I":        None,
                   "bkg":      bkg[new_len][None]}
         
         print('this is the input pdb mask', inputs['pdb_mask'])
