@@ -146,8 +146,8 @@ def main(argv):
   ##########################################
   # Dependent arguments
   ##########################################
-  if o.contigs is not None and o.loss_pdb is None: o.loss_pdb = 1.0
-  if o.contigs is not None and o.loss_bkg is None: o.loss_bkg = 1.0
+  if (o.contigs is not None or o.mask is not None) and o.loss_pdb is None: o.loss_pdb = 1.0
+  if (o.contigs is not None or o.mask is not None) and o.loss_bkg is None: o.loss_bkg = 1.0
   if o.hbnets is not None and o.loss_hbn is None: o.loss_hbn = 1.0
   if o.seq_mode == 'MSA' and o.feat_drop is None: o.feat_drop = 0.2
    
@@ -175,7 +175,11 @@ def main(argv):
     'loss_aa_ref': o.loss_aa_ref,
     'loss_keep_out': o.loss_keep_out,
     'loss_hbn': o.loss_hbn,
-    'loss_contigs': False if o.contigs is None else True,
+    'loss_contigs': o.contigs is not None,
+    'loss_pdb': o.loss_pdb,
+    'loss_bkg': o.loss_bkg,
+    'loss_eng': o.loss_eng,
+    'add_pdb_mask': o.mask is not None,
     'cs_method': o.cs_method,
     'serial': o.serial, 
     'n_models': o.n_models,
@@ -240,14 +244,14 @@ def main(argv):
     if o.contigs is not None:
       kw_ContigSearch["contigs"] = parse_contigs(o.contigs, pdb_out["pdb_idx"])
       kw_ContigSearch["ptn_geo"] = np.array(desired_feat[0], dtype=np.float32)
+    
+      # gather kw for ivan's contig search
+      idx = cons2idxs(parse_contigs(o.contigs, pdb_out["pdb_idx"]))
+      idx = np.array(idx)
+      kw_probe_bsite['idx'] = idx
+      kw_probe_bsite['bsite'] = pdb_out['feat'][idx[:,None], idx[None,:]]
     if o.hbnets is not None:
       kw_hbnets["contigs"] = parse_contigs(o.hbnets, pdb_out["pdb_idx"])
-    
-    # gather kw for ivan's contig search
-    idx = cons2idxs(parse_contigs(o.contigs, pdb_out["pdb_idx"]))
-    idx = np.array(idx)
-    kw_probe_bsite['idx'] = idx
-    kw_probe_bsite['bsite'] = pdb_out['feat'][idx[:,None], idx[None,:]]
     
     # spike in the pdb sequence
     seq_start = None
@@ -284,7 +288,7 @@ def main(argv):
       print(f"regions constrainted by the pdb {pdb_mask}")
     
   # background distributions
-  if o.pdb is None or o.contigs is not None:
+  if o.pdb is None or o.contigs is not None or o.mask is not None:
     if o.len is not None:
       if '-' in o.len:
         min_L, max_L = [int(n) for n in o.len.split('-')]
@@ -297,12 +301,12 @@ def main(argv):
     bkg_range = np.arange(min_L-bkg_padding,max_L+bkg_padding+1).tolist()
     print(f"computing background distribution for {bkg_range[0]}-{bkg_range[-1]}")
     kw_OptSettings['bkgs'] = get_bkg(bkg_range,DB_DIR=DB_DIR)
+    kw_probe_bsite['L'] = int(L_range[0])  # currently must be a fixed single length
   
   ##########################################
   # setup design model
   ##########################################
   print("setting up design model")
-  kw_probe_bsite['L'] = int(np.random.choice(L_range))  # currently must be a fixed single length
   model = mk_design_model(**kw_graph_setup)
 
   ##########################################
@@ -386,9 +390,8 @@ def main(argv):
         ######################################
         # IVAN'S HYBRID BACKBONE DESIGN
         ######################################
-        L = int(L_range[0])
         print(f'Hallucinating protein of length {L}')
-        kw_OptSettings['L_start'] = L
+        kw_OptSettings['L_start'] = kw_probe_bsite['L']
 
         output = model.design(**kw_OptSettings)
         
@@ -523,32 +526,31 @@ def main(argv):
       ######################################
       # SERGEY'S HYBRID BACKBONE DESIGN
       ######################################
-      # samplin' time
-      for s in range(o.sam):
-        move,loop_len = sample_move(moves)
-        print('checking protein length:', L, move[0], move[1])
-        new_len = L + len(move[0]) - len(move[1])
+      move,loop_len = sample_move(moves)
+      print('checking protein length:', L, move[0], move[1])
+      new_len = L + len(move[0]) - len(move[1])
+      kw_OptSettings['L_start'] = new_len
 
-        # apply move to pdb/mask/msa/bkg
-        print('afdadsf', pdb_mask)
-        inputs = {"pdb":      apply_move(desired_feat,move,[1,2]),
-                  "pdb_mask": apply_move(pdb_mask[None],move,[1]),
-                  "I":        None,  #apply_move(seq_start,move,[2]),
-                  "bkg":      bkg[new_len][None]}
-        
-        print('this is the input pdb mask', inputs['pdb_mask'])
-        output = model.design(inputs=inputs, weights={'bkg':1, 'pdb':1}, **d_inputs)
-        pdb_feat_ = apply_move(pdb_feat, move, [1,2])
-        output["acc"] = get_dist_acc(output["feat"], pdb_feat_, inputs["pdb_mask"])[0]
-        save_result(output, f"{o.out}_{n}_{s}_{loop_len}", o)
+      # apply move to pdb/mask/msa/bkg
+      kw_OptSettings['graph_inputs']["pdb"] = apply_move(desired_feat,move,[1,2])
+      kw_OptSettings['graph_inputs']["pdb_mask"] = apply_move(pdb_mask[None],move,[1])
+                
+      output = model.design(**kw_OptSettings)
 
-        trb = output['track_best']
-        trb['settings'] = vars(o)
-        trb['con_ref_idx0'] = [np.where(pdb_mask)[0]]
-        trb['con_hal_idx0'] = [np.where(apply_move(pdb_mask,move,[0]))[0]]
-        pdb_idx = kw_OptSettings['pdb_idx']
-        trb['con_ref_pdb_idx'] = [pdb_idx[idx0] for idx0 in trb['con_ref_idx0'][0]]
-        trb['con_hal_pdb_idx'] = [('A', idx0+1) for idx0 in trb['con_hal_idx0'][0]]
+      pdb_feat_ = apply_move(pdb_feat, move, [1,2])
+      output["acc"] = get_dist_acc(output["feat"], pdb_feat_, 
+                                   kw_OptSettings['graph_inputs']["pdb_mask"])[0]
+
+      trb = output['track_best']
+      trb['settings'] = vars(o)
+      trb['con_ref_idx0'] = [np.where(pdb_mask)[0]]
+      trb['con_hal_idx0'] = [np.where(apply_move(pdb_mask,move,[0]))[0]]
+      pdb_idx = kw_OptSettings['pdb_idx']
+      trb['con_ref_pdb_idx'] = [pdb_idx[idx0] for idx0 in trb['con_ref_idx0'][0]]
+      trb['con_hal_pdb_idx'] = [('A', idx0+1) for idx0 in trb['con_hal_idx0'][0]]
+
+      #save_result(output, f"{o.out}_{n}_{s}_{loop_len}", o)
+      save_result(output, f"{o.out}_{n}", o)
 
     # record completed job numbers in the checkpoint file
     with open(f_checkpoint, 'a+') as f_out:

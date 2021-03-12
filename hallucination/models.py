@@ -159,7 +159,7 @@ class mk_design_model:
   def __init__(self, seq_mode='MSA', feat_drop=None, loss_aa_comp=None,
                loss_pdb=None, loss_bkg=None, loss_eng=None, loss_contacts=None,
                loss_aa_ref=None, loss_keep_out=None, cs_method=None, loss_contigs=None,
-               loss_hbn=None,
+               loss_hbn=None, add_pdb_mask=None,
                serial=False, n_models=5, specific_models=None,
                eps=1e-8, DB_DIR=".",
                kw_MRF={}, kw_PSSM={}, kw_ContigSearch={}, kw_probe_bsite={}, kw_hbnets={}):
@@ -356,6 +356,7 @@ class mk_design_model:
         pdb = add_input([None,None,138], 'pdb')  # make the graph input
         pdb_mask_2D = tf.reduce_sum(pdb,-1) / 6
         if add_pdb_mask:
+          pdb_mask = add_input((None,),"pdb_mask")
           pdb_mask_2D *= pdb_mask[:,:,None]*pdb_mask[:,None,:]  # NEED TO EXPLICITLY EXCLUDE DIAGONAL
       
       # cross-entropy loss for fixed backbone design
