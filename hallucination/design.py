@@ -139,7 +139,7 @@ def main(argv):
   if o.pdb is None and o.len is None and o.predict_loss is None:
     err = f"ERROR: --pdb={o.pdb} or --len={o.len} or --len={o.predict_loss} must be defined "
     sys.exit(err)
-  if ('-' in o.len) and (o.cs_method == 'ia'):
+  if (o.len is not None) and ('-' in o.len) and (o.cs_method == 'ia'):
     err = f"ERROR: Proteins must be a fixed length when using cs_method 'ia'"
     sys.exit(err)
 
