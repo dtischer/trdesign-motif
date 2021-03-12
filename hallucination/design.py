@@ -130,10 +130,18 @@ def main(argv):
   #------------------------------------------------------------------------------------- 
   o = p.parse_args()
 
+  ##########################################
+  # Check for valid arguments
+  ##########################################
   if o.out is None:
-    ag.usage(f"ERROR: Output file not defined --out={o.out}")
+    err = f"ERROR: Output file not defined --out={o.out}"
+    sys.exit(err)
   if o.pdb is None and o.len is None and o.predict_loss is None:
-    ag.usage(f"ERROR: --pdb={o.pdb} or --len={o.len} or --len={o.predict_loss} must be defined ")
+    err = f"ERROR: --pdb={o.pdb} or --len={o.len} or --len={o.predict_loss} must be defined "
+    sys.exit(err)
+  if ('-' in o.len) and (o.cs_method == 'ia'):
+    err = f"ERROR: Proteins must be a fixed length when using cs_method 'ia'"
+    sys.exit(err)
 
   ##########################################
   # Dependent arguments
@@ -207,7 +215,7 @@ def main(argv):
     'beta_i': o.beta_i,
     'beta_f': o.beta_f,
     'graph_inputs': graph_inputs_,
-    'weights': weights
+    'weights': weights,
   }
 
   ##########################################
@@ -378,11 +386,14 @@ def main(argv):
         ######################################
         # IVAN'S HYBRID BACKBONE DESIGN
         ######################################
-        L = int(np.random.choice(L_range))
+        L = int(L_range[0])
         print(f'Hallucinating protein of length {L}')
         kw_OptSettings['L_start'] = L
 
         output = model.design(**kw_OptSettings)
+        
+        # record all input settings
+        output['track_best']['settings'] = vars(o)  # converts values of obj attributes to dict
         
         ##############
         # Calculate contig location

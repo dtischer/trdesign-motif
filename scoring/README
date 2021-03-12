@@ -12,7 +12,7 @@ Also include contig rmsd:
 
 Also include contig and interface rmsd: 
 
-   ./calc_metrics.sh FOLDER TEMPLATE RECEPTOR INTERFACE_RES_FILE
+   ./calc_metrics.sh FOLDER TEMPLATE RECEcalPTOR INTERFACE_RES_FILE
 
 FOLDER should contain PDBs of hallucinations or fastdesigns. TEMPLATE and
 RECEPTOR are PDB files representing the natural binder and natural receptor,

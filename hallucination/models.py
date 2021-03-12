@@ -493,16 +493,18 @@ class mk_design_model:
       for label in self.loss_label:
         traj_loss[label].append(loss_dict[label])
 
-      w_sorted = np.sort(p['branch_weights'][0])[::-1]
-      w_sorted_pad = np.zeros([30])
-      w_sorted_pad[:w_sorted.shape[0]] = w_sorted
-      branch_ws.append(w_sorted_pad)
-      #print('Branch weights', w_sorted, w_sorted.shape)
-      
-      l_sorted = np.sort(p['branch_losses'][0][::-1])
-      l_sorted_pad = np.zeros([30])
-      l_sorted_pad[:l_sorted.shape[0]] = l_sorted
-      branch_ls.append(l_sorted_pad)      
+      # branch stats for dt cs method
+      if 'branch_weights' in p:
+        w_sorted = np.sort(p['branch_weights'][0])[::-1]
+        w_sorted_pad = np.zeros([30])
+        w_sorted_pad[:w_sorted.shape[0]] = w_sorted
+        branch_ws.append(w_sorted_pad)
+        #print('Branch weights', w_sorted, w_sorted.shape)
+
+        l_sorted = np.sort(p['branch_losses'][0][::-1])
+        l_sorted_pad = np.zeros([30])
+        l_sorted_pad[:l_sorted.shape[0]] = l_sorted
+        branch_ls.append(l_sorted_pad)      
         
       # translate from idx0 to pdb_idx
       if 'con_ref_idx0' in p:
