@@ -374,7 +374,7 @@ class mk_design_model:
       # kl loss for hallucination 
       # invert the pdb mask
       mask_bkg = 1 - mask_pdb
-      mask_bkg *= tf.eye(tf.shape(mask_bkg)[1])[None]  # Exclude the diagonal
+      mask_bkg *= (1 - tf.eye(tf.shape(mask_bkg)[1]))[None]  # Exclude the diagonal
       
       bkg_loss = -K.sum(O_feat*K.log(O_feat/(bkg+eps)+eps),-1) * mask_bkg / 6
       bkg_loss = K.sum(bkg_loss,[-1,-2])/(K.sum(mask_bkg,[-1,-2])+eps)
