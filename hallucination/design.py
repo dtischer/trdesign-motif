@@ -187,7 +187,6 @@ def main(argv):
     'loss_pdb': o.loss_pdb,
     'loss_bkg': o.loss_bkg,
     'loss_contigs': False if o.contigs is None else True,
-    'add_pdb_mask': False if o.mask_v2 is None else True,
     'cs_method': o.cs_method,
     'serial': o.serial, 
     'n_models': o.n_models,
@@ -301,19 +300,32 @@ def main(argv):
       print(f"regions constrainted by the pdb {pdb_mask}")
     
   # background distributions
-  if o.pdb is None or o.contigs is not None:
-    if o.len is not None:
-      if '-' in o.len:
-        min_L, max_L = [int(n) for n in o.len.split('-')]
+  if o.contigs is not None:
+    if '-' in o.len:
+      min_L, max_L = [int(n) for n in o.len.split('-')]
+    else:
+      min_L, max_L = int(o.len), int(o.len)
+  elif o.mask_v2 is not None:
+    min_L, max_L = 0,0
+    for el in o.mask_v2.split(','):
+      if el[0].isalpha(): 
+        # adding a fixed length contig
+        s,e = el[1:].split('-')
+        s,e = int(s), int(e)
+        min_L += e - s + 1
+        max_L += e - s + 1
       else:
-        min_L, max_L = int(o.len), int(o.len)
+        # adding a variable length gap
+        min,max = el.split('-')
+        min,max = int(min), int(max)
+        min_L += min
+        max_L += max
       
-    L_range = np.arange(min_L,max_L+1).tolist()
-    if o.opt_method == "MCMC_biased":  bkg_padding = 20
-    else: bkg_padding = 0
-    bkg_range = np.arange(min_L-bkg_padding,max_L+bkg_padding+1).tolist()
-    print(f"computing background distribution for {bkg_range[0]}-{bkg_range[-1]}")
-    kw_OptSettings['bkgs'] = get_bkg(bkg_range,DB_DIR=DB_DIR)
+  L_range = np.arange(min_L,max_L+1).tolist()
+  bkg_padding = 20 if o.opt_method == "MCMC_biased" else 0
+  bkg_range = np.arange(min_L-bkg_padding,max_L+bkg_padding+1).tolist()
+  print(f"computing background distribution for {bkg_range[0]}-{bkg_range[-1]}")
+  kw_OptSettings['bkgs'] = get_bkg(bkg_range,DB_DIR=DB_DIR)
   
   ##########################################
   # setup design model
@@ -338,9 +350,11 @@ def main(argv):
     with open(f_checkpoint, 'r') as f_in:
       hals_done = f_in.read().splitlines()
       last_completed_hal = int(hals_done[-1]) if len(hals_done) != 0 else -1
+      if last_completed_hal + 1 == o.num:
+        print('All jobs have previously completed. There is nothing more to hallucinate.')
   else:
     last_completed_hal = -1
-      
+    
   for n in range(last_completed_hal + 1, o.num):
     if o.predict_loss is not None:
       ######################################
@@ -513,29 +527,33 @@ def main(argv):
         # save results
         save_result(output, f"{o.out}_{n}", o)
           
-    elif o.pdb is None:
-      ######################################
-      # UNCONSTRAINED BACKBONE DESIGN
-      ######################################
-      L = int(np.random.choice(L_range))
-      d_inputs['L_start'] = L
-      output = model.design(weights={}, **d_inputs)
-      #if o.track_step is not None:
-      #  output['track_step']['bkgs'] = bkgs
-      save_result(output,f"{o.out}_{n}",o)
+    elif o.mask_v2 is not None:
+      # apply the mask to the ref pdb features
+      feat_hal, mappings = apply_mask(o.mask_v2, pdb_out)      
+      graph_inputs_['pdb'] = feat_hal
       
-    elif o.mask is None:
-      ######################################
-      # FIXED BACKBONE DESIGN
-      ######################################
-      d_inputs['L_start'] = pdb_feat.shape[1]
-      inputs = {"pdb":desired_feat,"I":seq_start}
-        
-      output = model.design(inputs=inputs, weights={'pdb':1}, **d_inputs)
-      output["acc"] = get_dist_acc(output["feat"], pdb_feat)[0]
-      save_result(output,f"{o.out}_{n}",o)
+      # note length
+      L = feat_hal.shape[1]
+      kw_OptSettings['L_start'] = L
+      print(f'Hallucinating protein of length {L}')
+      
+      # run model!
+      output = model.design(**kw_OptSettings)
+      
+      # add contig mappings
+      output['track_best'].update(mappings)
+
+      # force contig geo
+      if o.force_contig_geo:
+        output['feat'] = force_contig_geo(output['feat'], pdb_out['feat'], output['track_best'])
+
+      # record all input settings
+      output['track_best']['settings'] = vars(o)  # converts values of obj attributes to dict
+
+      save_result(output, f"{o.out}_{n}", o)
       
     else:
+      print('PLEASE SPECIFY A DESIGN MODE')
       ######################################
       # SERGEY'S HYBRID BACKBONE DESIGN
       ######################################

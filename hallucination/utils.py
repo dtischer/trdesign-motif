@@ -623,6 +623,7 @@ def apply_mask(mask, pdb_out):
   '''
   
   ref_pdb_2_idx0 = {pdb_idx:i for i, pdb_idx in enumerate(pdb_out['pdb_idx'])}
+  #ref_idx0_2_pdb = {i:pdb_idx for i, pdb_idx in enumerate(pdb_out['pdb_idx'])}
   
   #####################################
   # make a map from hal_idx0 to ref_idx0. Has None for gap regions
@@ -676,4 +677,15 @@ def apply_mask(mask, pdb_out):
   mask_1d = (~np.isnan(hal_2_ref_idx0)).astype(float)
   mask_1d = mask_1d[None]
   
-  return feat_hal, mask_1d
+  
+  #####################################
+  # mappings between hal and ref
+  #####################################
+  mappings = {
+    'con_hal_idx0': hal_idx0.tolist(),
+    'con_ref_idx0': ref_idx0.tolist(),
+    'con_hal_pdb_idx': [('A',i+1) for i in hal_idx0],
+    'con_ref_pdb_idx': [pdb_out['pdb_idx'][i] for i in ref_idx0]
+  }
+  
+  return feat_hal, mappings
