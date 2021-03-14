@@ -238,7 +238,6 @@ def main(argv):
    
     pdb_out = prep_input(o.pdb, chain=chains)
     pdb_feat = pdb_out["feat"][None]
-    L = pdb_feat.shape[1]
     desired_feat = np.copy(pdb_feat)
     kw_OptSettings['pdb_idx'] = pdb_out['pdb_idx']
     if o.contigs is not None:
@@ -284,6 +283,7 @@ def main(argv):
 
     # setup moves (insertions/deletions)
     if o.mask is not None:
+      L = pdb_feat.shape[1]
       moves, pdb_mask, min_L, max_L = mask_to_moves(o.mask,L)
       print(f"regions constrainted by the pdb {pdb_mask}")
     
@@ -300,8 +300,11 @@ def main(argv):
     else: bkg_padding = 0
     bkg_range = np.arange(min_L-bkg_padding,max_L+bkg_padding+1).tolist()
     print(f"computing background distribution for {bkg_range[0]}-{bkg_range[-1]}")
+
+    # ivan's method requires length during graph setup so it is a fixed single length
     kw_OptSettings['bkgs'] = get_bkg(bkg_range,DB_DIR=DB_DIR)
-    kw_probe_bsite['L'] = int(L_range[0])  # currently must be a fixed single length
+    kw_probe_bsite['L'] = int(L_range[0])  
+    print(f"kw_probe_bsite['L']: {kw_probe_bsite['L']}")
   
   ##########################################
   # setup design model
@@ -390,8 +393,10 @@ def main(argv):
         ######################################
         # IVAN'S HYBRID BACKBONE DESIGN
         ######################################
+        L = kw_probe_bsite['L']
         print(f'Hallucinating protein of length {L}')
-        kw_OptSettings['L_start'] = kw_probe_bsite['L']
+        kw_OptSettings['L_start'] = L
+        print(f"kw_OptSettings['L_start']: {kw_OptSettings['L_start']}")
 
         output = model.design(**kw_OptSettings)
         
