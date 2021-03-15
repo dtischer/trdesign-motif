@@ -50,7 +50,6 @@ def main(argv):
   ex: '10-15'     remove pdb cst. from positions 10 to 15
   ex: '10'        remove pdb cst. from position 10''')
   p.add_argument('--stat_place',    default=False, type=str2bool, help='Contigs are randomly placed (preserving order) but do not move')
-  p.add_argument('--sam', '-s',     default=1, type=int, help='number of samples per design run [if --mask]')
   p.add_argument('--spike',         default=0.0, type=float, help='initialize design from pdb seq')
   p.add_argument('--predict_loss',  default=None, type=str, help='predict losses for sequences in file (in fasta format)')
   p.add_argument('--seed_pdb',      default=None, type=str, help='a pdb that you would like to further design (just extracts sequence)')
@@ -187,7 +186,7 @@ def main(argv):
     'DB_DIR': DB_DIR,
     'kw_ContigSearch': kw_ContigSearch,
     'kw_MRF': kw_MRF,
-    'kw_probe_bsite': kw_probe_bsite,
+    'kw_probe_bsite': kw_probe_bsite, # more entries are added below
     'kw_hbnets': kw_hbnets,
   }
   graph_inputs_ = {

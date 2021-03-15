@@ -101,8 +101,8 @@ def parse_cce(folder):
     for fn in glob.glob(os.path.join(folder,'*.trR_scored.txt')):
         row = pd.read_csv(fn)
         df = df.append(row)
-    df.columns = ['name','cce10','cce_1d','acc']
     if df.shape[0]>0:
+        df.columns = ['name','cce10','cce_1d','acc']
         return df[['name','cce10']]
     else:
         return df
