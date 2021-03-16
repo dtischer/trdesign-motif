@@ -170,6 +170,7 @@ def main(argv):
     'keep_order': o.keep_order,
   }
   kw_hbnets = {}
+  kw_MaskMode = {}
   kw_probe_bsite = {
     'bin_width': o.bin_width
   }
@@ -195,6 +196,7 @@ def main(argv):
     'kw_MRF': kw_MRF,
     'kw_probe_bsite': kw_probe_bsite, # more entries are added below
     'kw_hbnets': kw_hbnets,
+    'kw_MaskMode': kw_MaskMode,
   }
   graph_inputs_ = {
     'seq_hard': np.array([o.seq_hard]),
@@ -260,6 +262,11 @@ def main(argv):
       kw_probe_bsite['bsite'] = pdb_out['feat'][idx[:,None], idx[None,:]]
     if o.hbnets is not None:
       kw_hbnets["contigs"] = parse_contigs(o.hbnets, pdb_out["pdb_idx"])
+      kw_hbnets["ptn_geo"] = np.array(desired_feat[0], dtype=np.float32)
+    if (o.mask_v2 is not None) and (o.hbnets is not None):
+      mask_contigs = [el for el in o.mask_v2.split(',') if el[0].isalpha()]
+      mask_contigs = ','.join(mask_contigs)
+      kw_MaskMode['contigs'] = parse_contigs(mask_contigs, pdb_out["pdb_idx"])
     
     # spike in the pdb sequence
     seq_start = None
@@ -317,18 +324,16 @@ def main(argv):
         min,max = int(min), int(max)
         min_L += min
         max_L += max
-      
+  
+  L_range = np.arange(min_L,max_L+1).tolist()
+  if o.opt_method == "MCMC_biased":  bkg_padding = 20
+  else: bkg_padding = 0
+  bkg_range = np.arange(min_L-bkg_padding,max_L+bkg_padding+1).tolist()
+  print(f"computing background distribution for {bkg_range[0]}-{bkg_range[-1]}")
 
-    L_range = np.arange(min_L,max_L+1).tolist()
-    if o.opt_method == "MCMC_biased":  bkg_padding = 20
-    else: bkg_padding = 0
-    bkg_range = np.arange(min_L-bkg_padding,max_L+bkg_padding+1).tolist()
-    print(f"computing background distribution for {bkg_range[0]}-{bkg_range[-1]}")
-
-    # ivan's method requires length during graph setup so it is a fixed single length
-    kw_OptSettings['bkgs'] = get_bkg(bkg_range,DB_DIR=DB_DIR)
-    kw_probe_bsite['L'] = int(L_range[0])  
-    print(f"kw_probe_bsite['L']: {kw_probe_bsite['L']}")
+  # ivan's method requires length during graph setup so it is a fixed single length
+  kw_OptSettings['bkgs'] = get_bkg(bkg_range,DB_DIR=DB_DIR)
+  kw_probe_bsite['L'] = int(L_range[0])  
   
   ##########################################
   # setup design model
@@ -541,6 +546,10 @@ def main(argv):
       kw_OptSettings['L_start'] = L
       print(f'Hallucinating protein of length {L}')
       
+      # info for hbnet CCE loss
+      if o.loss_hbn is not None:
+        graph_inputs_['con_hal_idx0'] = np.array(mappings['con_hal_idx0'])[None, None]  # spoof leading (batch, branch) dims
+      
       # run model!
       output = model.design(**kw_OptSettings)
       
@@ -558,34 +567,6 @@ def main(argv):
       
     else:
       print('PLEASE SPECIFY A DESIGN MODE')
-      ######################################
-      # SERGEY'S HYBRID BACKBONE DESIGN
-      ######################################
-      move,loop_len = sample_move(moves)
-      print('checking protein length:', L, move[0], move[1])
-      new_len = L + len(move[0]) - len(move[1])
-      kw_OptSettings['L_start'] = new_len
-
-      # apply move to pdb/mask/msa/bkg
-      kw_OptSettings['graph_inputs']["pdb"] = apply_move(desired_feat,move,[1,2])
-      kw_OptSettings['graph_inputs']["pdb_mask"] = apply_move(pdb_mask[None],move,[1])
-                
-      output = model.design(**kw_OptSettings)
-
-      pdb_feat_ = apply_move(pdb_feat, move, [1,2])
-      output["acc"] = get_dist_acc(output["feat"], pdb_feat_, 
-                                   kw_OptSettings['graph_inputs']["pdb_mask"])[0]
-
-      trb = output['track_best']
-      trb['settings'] = vars(o)
-      trb['con_ref_idx0'] = [np.where(pdb_mask)[0]]
-      trb['con_hal_idx0'] = [np.where(apply_move(pdb_mask,move,[0]))[0]]
-      pdb_idx = kw_OptSettings['pdb_idx']
-      trb['con_ref_pdb_idx'] = [pdb_idx[idx0] for idx0 in trb['con_ref_idx0'][0]]
-      trb['con_hal_pdb_idx'] = [('A', idx0+1) for idx0 in trb['con_hal_idx0'][0]]
-
-      #save_result(output, f"{o.out}_{n}_{s}_{loop_len}", o)
-      save_result(output, f"{o.out}_{n}", o)
 
     # record completed job numbers in the checkpoint file
     with open(f_checkpoint, 'a+') as f_out:

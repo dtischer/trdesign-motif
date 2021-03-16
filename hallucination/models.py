@@ -162,7 +162,8 @@ class mk_design_model:
                loss_hbn=None, add_pdb_mask=None,
                serial=False, n_models=5, specific_models=None,
                eps=1e-8, DB_DIR=".",
-               kw_MRF={}, kw_PSSM={}, kw_ContigSearch={}, kw_probe_bsite={}, kw_hbnets={}):
+               kw_MRF={}, kw_PSSM={}, kw_ContigSearch={}, kw_probe_bsite={}, 
+               kw_hbnets={}, kw_MaskMode={}):
     self.serial = serial
     self.feat_drop = feat_drop
       
@@ -263,17 +264,29 @@ class mk_design_model:
         add_loss(best_kl_unweighted[None], 'bkg')
         best_con_idxs0 = tf.stop_gradient(best_con_idxs0)
         branch_con_idxs0 = tf.stop_gradient(branch_con_idxs0)
+        
+        # note idx0 of con_ref for hbnet loss
+        con_ref = tf.constant(cons2idxs(kw_ContigSearch['contigs']))
+        ref2hal = mk_ref2hal(con_ref, branch_con_idxs0)
+        
+        # add outputs
+        add_output(best_con_idxs0[None], "con_hal_idx0")
+        add_output(con_ref[None], "con_ref_idx0")
+        add_output(branch_weights[None], 'branch_weights')
+        add_output(branch_losses[None], 'branch_losses')
+        add_output(branch_con_idxs0[None], 'branch_con_idxs0')
 
+        '''        
         # make LUTs for easy conversion between ref and hal idxs
         con_ref = tf.constant(cons2idxs(kw_ContigSearch['contigs']))
         def ref2hal(ref_idx):
-          '''
-          This is a one to many operation. Want to return hal_idx for all branches
-          Think of lut as (ref_idx, branch)
+          
+          #This is a one to many operation. Want to return hal_idx for all branches
+          #Think of lut as (ref_idx, branch)
 
-          Returns (branch, hal_idx) tensor
-          Each row is what the ref_idx maps to in each branch returned by ContigSearch
-          '''
+          #Returns (branch, hal_idx) tensor
+          #Each row is what the ref_idx maps to in each branch returned by ContigSearch
+          
           n_branch = tf.cast(tf.shape(branch_con_idxs0)[0], tf.int32)
           lut_shape = (tf.math.reduce_max(con_ref)+1, n_branch)
           lut = tf.scatter_nd(con_ref[:,None], tf.transpose(branch_con_idxs0, (1,0)), lut_shape)
@@ -321,12 +334,7 @@ class mk_design_model:
           add_output(branch_con_idxs0[None], 'branch_con_idxs0')
           add_output(hbn_hal_idx[None], 'hbn_hal_idx')
           add_output(cce_weighted[None], 'hbn_cce_weighted')
-          
-        # add outputs
-        add_output(best_con_idxs0[None], "con_hal_idx0")
-        add_output(con_ref[None], "con_ref_idx0")
-        add_output(branch_weights[None], 'branch_weights')
-        add_output(branch_losses[None], 'branch_losses')
+        '''
       
       elif cs_method == 'ia':
         ################################
@@ -349,7 +357,7 @@ class mk_design_model:
       
     else:
       ################################
-      # CE and KL for mask mode
+      # CE and KL for Mask Mode
       ################################
       bkg = add_input([None,None,138], 'bkg')
       pdb = add_input([None,None,138], 'pdb')
@@ -362,9 +370,13 @@ class mk_design_model:
         pdb_loss = K.sum(pdb_loss,[-1,-2]) / (K.sum(mask_pdb,[-1,-2])+eps)
         add_loss(pdb_loss, "pdb")
       
-      # additional ce loss for "hbnet" positions
+      # additional info for CCE loss for "hbnet" positions
       if loss_hbn is not None:
-        print('to be added')
+        con_hal_idx0 = add_input([1, None], 'con_hal_idx0', dtype=tf.int32)  #(batch, "branch", n_hbnet_res)
+        con_hal_idx0 = con_hal_idx0[0]  # strip "batch" dim out
+        con_ref = tf.constant(cons2idxs(kw_MaskMode['contigs']), dtype=tf.int32)  # entire contig idx0, not just hbnet contig
+        ref2hal = mk_ref2hal(con_ref, con_hal_idx0)
+        branch_weights = tf.constant([1.], dtype=tf.float32)
       
       # minimize statical energy function (family wide hallucinations)
       elif loss_eng is not None:
@@ -402,6 +414,47 @@ class mk_design_model:
       msa_l1_loss = K.mean(K.abs(I_feat[...,-1]), axis=[-1,-2])
       add_loss(msa_l1_loss, 'contacts')
       add_output(msa_l1_loss, 'contacts')
+      
+    # "hbnet" CCE loss
+    if loss_hbn is not None:
+      # reference idx and geo.
+      hbn_ref_idx = np.array(cons2idxs(kw_hbnets['contigs']))
+      hbn_ref_geo = kw_hbnets['ptn_geo'][hbn_ref_idx[:,None], hbn_ref_idx[None,:]]
+
+      # hal idx and geo. This has to be done in tf
+      hbn_hal_idx = ref2hal(hbn_ref_idx)
+      branch, n = tf.shape(hbn_hal_idx)[0], tf.shape(hbn_hal_idx)[1] 
+      a = tf.broadcast_to(hbn_hal_idx[:,:,None], (branch,n,n))
+      b = tf.broadcast_to(hbn_hal_idx[:,None,:], (branch,n,n))
+      gnd_idx = tf.stack([a, b], -1)
+      hbn_hal_geo = tf.gather_nd(O_feat[0], gnd_idx)
+      add_output(gnd_idx[None], 'gnd_idx')
+      add_output(hbn_hal_geo[None], 'hbn_hal_geo')
+
+      # calculate cce
+      # 1. broadcast ref_geo to all gathered branches of hal_geo
+      hbn_ref_geo = tf.broadcast_to(hbn_ref_geo[None], tf.shape(hbn_hal_geo))  # (branch, hbn_idx, hbn_idx, 6D_geo)
+      add_output(hbn_ref_geo[None], 'hbn_ref_geo')
+
+      # 2. Mask for diagonal and d > 20A
+      mask_hbn = tf.reduce_sum(hbn_ref_geo, -1) / 6
+      add_output(mask_hbn[None], 'mask_hbn')
+
+      # 3. cce at every ij pair
+      cce_ij = tf.reduce_sum(-hbn_ref_geo * tf.log(hbn_hal_geo + eps), -1) / 6
+      add_output(cce_ij[None], 'cce_ij')
+
+      # 4. Mean, unweighted cce of every ContigSearch branch. Excludes diagonal and d > 20
+      cce_mean_unweighted = tf.reduce_sum(mask_hbn * cce_ij, (1,2)) / tf.reduce_sum(mask_hbn, (1,2))  # (branch,)
+      add_output(cce_mean_unweighted[None], 'cce_mean_unweighted')
+
+      # 5. Weighted superposition of all branches
+      cce_weighted = cce_mean_unweighted * branch_weights
+      add_loss(tf.reduce_sum(cce_weighted)[None], 'hbn')
+
+      # track outputs
+      add_output(hbn_hal_idx[None], 'hbn_hal_idx')
+      add_output(cce_weighted[None], 'hbn_cce_weighted')
       
     ###############################
     # add tracked tensors that are not easy to directly access (e.g. buried in a custom layer)
@@ -1272,3 +1325,31 @@ def probe_bsite_tf_frag(pred, beta, L, bsite, idx, bin_width='15_deg'):
     p2d = tf.reduce_mean(p2d, axis=0)
 
     return tf.cast(cce_sat,dtype=tf.float32), tf.cast(cce_consist,dtype=tf.float32), p2d
+
+  
+#######################################
+# tf dependent functions
+#######################################
+def mk_ref2hal(con_ref, branch_con_idxs0):
+  '''  
+  Inputs:
+    con_ref: idx0 of the contigs in the reference structure
+    branch_con_idxs0: (branch, hal_idx0) of contig in the hallucinated structure
+  
+  Output: a function that maps from ref_idx0 to hal_idx0
+  '''
+  
+  def ref2hal(ref_idx):
+    #This is a one to many operation. Want to return hal_idx for all branches
+    #Think of lut as (ref_idx, branch)
+
+    #Returns (branch, hal_idx) tensor
+    #Each row is what the ref_idx maps to in each branch returned by ContigSearch
+
+    n_branch = tf.cast(tf.shape(branch_con_idxs0)[0], tf.int32)
+    lut_shape = (tf.math.reduce_max(con_ref)+1, n_branch)
+    lut = tf.scatter_nd(con_ref[:,None], tf.transpose(branch_con_idxs0, (1,0)), lut_shape)
+    hal_idx = tf.gather_nd(lut, ref_idx[:,None])
+    return tf.transpose(hal_idx, (1,0))
+  
+  return ref2hal
