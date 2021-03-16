@@ -67,7 +67,7 @@ def get_contig_idx(trk):
         else: refkey, halkey = 'con_idxs_ref','con_idxs_hal'
         refidx = trk[refkey][0]
         halidx = trk[halkey][0]+1
-    return np.array(refidx), np.array(halidx)
+    return np.array(refidx,dtype=int), np.array(halidx,dtype=int)
 
 def get_rmsd(refidx, halidx, refname, halname):
     contigs = idx2contigstr(refidx)
