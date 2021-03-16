@@ -8,7 +8,7 @@ warnings.filterwarnings('ignore',category=FutureWarning)
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-import sys, subprocess, argparse
+import sys, subprocess, argparse, re
 from subprocess import DEVNULL
 import numpy as np
 import matplotlib
@@ -49,6 +49,12 @@ def main(argv):
   ex: '10-15:5'   replace pos. 10-15 with fixed-loop of length 5
   ex: '10-15'     remove pdb cst. from positions 10 to 15
   ex: '10'        remove pdb cst. from position 10''')
+  p.add_argument('--mask_v2', '-m2',    default=None, type=str, help='''set linker lengths between fragments of a refernce pdb
+  use '<ch>start-end, min_insertion-max_insertion, <ch>start-end, min_insertion-max_insertion ...'
+  ex: 'A12-24,2-5,A36-42,20-50,B6-11'
+  You can reorder the contigs from the pdb too!
+  ex: 'B6-11,9-21,A36-42,20-30,A12-24'
+  ''')
   p.add_argument('--stat_place',    default=False, type=str2bool, help='Contigs are randomly placed (preserving order) but do not move')
   p.add_argument('--spike',         default=0.0, type=float, help='initialize design from pdb seq')
   p.add_argument('--predict_loss',  default=None, type=str, help='predict losses for sequences in file (in fasta format)')
@@ -138,7 +144,7 @@ def main(argv):
   if o.pdb is None and o.len is None and o.predict_loss is None:
     err = f"ERROR: --pdb={o.pdb} or --len={o.len} or --len={o.predict_loss} must be defined "
     sys.exit(err)
-  if (o.len is not None) and ('-' in o.len) and (o.cs_method == 'ia'):
+  if (o.cs_method == 'ia') and ('-' in o.len):
     err = f"ERROR: Proteins must be a fixed length when using cs_method 'ia'"
     sys.exit(err)
 
@@ -149,6 +155,9 @@ def main(argv):
   if (o.contigs is not None or o.mask is not None) and o.loss_bkg is None: o.loss_bkg = 1.0
   if o.hbnets is not None and o.loss_hbn is None: o.loss_hbn = 1.0
   if o.seq_mode == 'MSA' and o.feat_drop is None: o.feat_drop = 0.2
+    
+  if o.mask_v2 is not None and o.loss_pdb is None: o.loss_pdb = 1.0
+  if o.mask_v2 is not None and o.loss_bkg is None: o.loss_bkg = 1.0
    
   print(o.__dict__)
     
@@ -174,11 +183,9 @@ def main(argv):
     'loss_aa_ref': o.loss_aa_ref,
     'loss_keep_out': o.loss_keep_out,
     'loss_hbn': o.loss_hbn,
-    'loss_contigs': o.contigs is not None,
     'loss_pdb': o.loss_pdb,
     'loss_bkg': o.loss_bkg,
-    'loss_eng': o.loss_eng,
-    'add_pdb_mask': o.mask is not None,
+    'loss_contigs': False if o.contigs is None else True,
     'cs_method': o.cs_method,
     'serial': o.serial, 
     'n_models': o.n_models,
@@ -221,6 +228,8 @@ def main(argv):
     'weights': weights,
   }
 
+  print(kw_graph_setup)
+  
   ##########################################
   # Gather pdb geometries, bkg distributions
   ##########################################
@@ -228,10 +237,11 @@ def main(argv):
   if o.pdb is not None:
     print(f"extracting features from pdb={o.pdb}")
     if o.contigs is not None:
-      chains = set()
-      for con in o.contigs.split(','):
-        chains |= {con[0]}
-      chains = list(chains)
+      chains = re.findall(r'[A-Z]', o.contigs)
+      chains = list(set(chains))
+    if o.mask_v2 is not None:
+      chains = re.findall(r'[A-Z]', o.mask_v2)
+      chains = list(set(chains))
     else:
       chains = o.chain
    
@@ -287,13 +297,28 @@ def main(argv):
       print(f"regions constrainted by the pdb {pdb_mask}")
     
   # background distributions
-  if o.pdb is None or o.contigs is not None or o.mask is not None:
-    if o.len is not None:
-      if '-' in o.len:
-        min_L, max_L = [int(n) for n in o.len.split('-')]
+  if o.contigs is not None:
+    if '-' in o.len:
+      min_L, max_L = [int(n) for n in o.len.split('-')]
+    else:
+      min_L, max_L = int(o.len), int(o.len)
+  elif o.mask_v2 is not None:
+    min_L, max_L = 0,0
+    for el in o.mask_v2.split(','):
+      if el[0].isalpha(): 
+        # adding a fixed length contig
+        s,e = el[1:].split('-')
+        s,e = int(s), int(e)
+        min_L += e - s + 1
+        max_L += e - s + 1
       else:
-        min_L, max_L = int(o.len), int(o.len)
+        # adding a variable length gap
+        min,max = el.split('-')
+        min,max = int(min), int(max)
+        min_L += min
+        max_L += max
       
+
     L_range = np.arange(min_L,max_L+1).tolist()
     if o.opt_method == "MCMC_biased":  bkg_padding = 20
     else: bkg_padding = 0
@@ -328,9 +353,11 @@ def main(argv):
     with open(f_checkpoint, 'r') as f_in:
       hals_done = f_in.read().splitlines()
       last_completed_hal = int(hals_done[-1]) if len(hals_done) != 0 else -1
+      if last_completed_hal + 1 == o.num:
+        print('All jobs have previously completed. There is nothing more to hallucinate.')
   else:
     last_completed_hal = -1
-      
+    
   for n in range(last_completed_hal + 1, o.num):
     if o.predict_loss is not None:
       ######################################
@@ -504,29 +531,33 @@ def main(argv):
         # save results
         save_result(output, f"{o.out}_{n}", o)
           
-    elif o.pdb is None:
-      ######################################
-      # UNCONSTRAINED BACKBONE DESIGN
-      ######################################
-      L = int(np.random.choice(L_range))
-      d_inputs['L_start'] = L
-      output = model.design(weights={}, **d_inputs)
-      #if o.track_step is not None:
-      #  output['track_step']['bkgs'] = bkgs
-      save_result(output,f"{o.out}_{n}",o)
+    elif o.mask_v2 is not None:
+      # apply the mask to the ref pdb features
+      feat_hal, mappings = apply_mask(o.mask_v2, pdb_out)      
+      graph_inputs_['pdb'] = feat_hal
       
-    elif o.mask is None:
-      ######################################
-      # FIXED BACKBONE DESIGN
-      ######################################
-      d_inputs['L_start'] = pdb_feat.shape[1]
-      inputs = {"pdb":desired_feat,"I":seq_start}
-        
-      output = model.design(inputs=inputs, weights={'pdb':1}, **d_inputs)
-      output["acc"] = get_dist_acc(output["feat"], pdb_feat)[0]
-      save_result(output,f"{o.out}_{n}",o)
+      # note length
+      L = feat_hal.shape[1]
+      kw_OptSettings['L_start'] = L
+      print(f'Hallucinating protein of length {L}')
+      
+      # run model!
+      output = model.design(**kw_OptSettings)
+      
+      # add contig mappings
+      output['track_best'].update(mappings)
+
+      # force contig geo
+      if o.force_contig_geo:
+        output['feat'] = force_contig_geo(output['feat'], pdb_out['feat'], output['track_best'])
+
+      # record all input settings
+      output['track_best']['settings'] = vars(o)  # converts values of obj attributes to dict
+
+      save_result(output, f"{o.out}_{n}", o)
       
     else:
+      print('PLEASE SPECIFY A DESIGN MODE')
       ######################################
       # SERGEY'S HYBRID BACKBONE DESIGN
       ######################################

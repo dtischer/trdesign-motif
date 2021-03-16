@@ -349,36 +349,38 @@ class mk_design_model:
       
     else:
       ################################
-      # CE and KL loss for FIXED contig placement
+      # CE and KL for mask mode
       ################################
-      # starting making the pdb_mask_2D
-      if (loss_pdb is not None) or (loss_eng is not None):
-        pdb = add_input([None,None,138], 'pdb')  # make the graph input
-        pdb_mask_2D = tf.reduce_sum(pdb,-1) / 6
-        if add_pdb_mask:
-          pdb_mask = add_input((None,),"pdb_mask")
-          pdb_mask_2D *= pdb_mask[:,:,None]*pdb_mask[:,None,:]  # NEED TO EXPLICITLY EXCLUDE DIAGONAL
+      bkg = add_input([None,None,138], 'bkg')
+      pdb = add_input([None,None,138], 'pdb')
       
-      # cross-entropy loss for fixed backbone design
+      mask_pdb = tf.reduce_sum(pdb,-1) / 6  # 1 where cce loss should be applied
+      
+      # cross entropy loss for fixed backbone locations
       if loss_pdb is not None:
-        pdb_loss = -K.sum(pdb*K.log(O_feat+eps),-1) * pdb_mask_2D / 6
-        add_loss(K.sum(pdb_loss,[-1,-2]) / (K.sum(pdb_mask_2D,[-1,-2])+eps),"pdb")
-        #add_output(pdb_loss, "pdb_loss_2D")
+        pdb_loss = -K.sum(pdb*K.log(O_feat+eps),-1) * mask_pdb / 6
+        pdb_loss = K.sum(pdb_loss,[-1,-2]) / (K.sum(mask_pdb,[-1,-2])+eps)
+        add_loss(pdb_loss, "pdb")
+      
+      # additional ce loss for "hbnet" positions
+      if loss_hbn is not None:
+        print('to be added')
       
       # minimize statical energy function (family wide hallucinations)
       elif loss_eng is not None:
-        eng_loss = -K.sum(O_feat*K.log(pdb+eps), -1) * pdb_mask_2D / 6  # pdb=family constraints
-        add_loss(K.sum(eng_loss,[-1,-2])/(K.sum(pdb_mask_2D,[-1,-2])+eps),"eng")
+        eng_loss = -K.sum(O_feat*K.log(pdb+eps), -1) * mask_pdb / 6  # pdb=family constraints
+        add_loss(K.sum(eng_loss,[-1,-2])/(K.sum(mask_pdb,[-1,-2])+eps), "eng")
       
-      # kl loss for hallucination
-      if loss_bkg is not None:
-        bkg = add_input([None,None,138], 'bkg')
-        bkg_mask_2D = tf.reduce_sum(bkg,-1) / 6
-        if add_pdb_mask:
-          bkg_mask_2D -= pdb_mask_2D                           # NEED TO EXPLICITLY EXCLUDE DIAGONAL
-        bkg_loss = -K.sum(O_feat*K.log(O_feat/(bkg+eps)+eps),-1) * bkg_mask_2D / 6
-        add_loss(K.sum(bkg_loss,[-1,-2])/(K.sum(bkg_mask_2D,[-1,-2])+eps),"bkg")
+      # kl loss for hallucination 
+      # invert the pdb mask
+      mask_bkg = 1 - mask_pdb
+      mask_bkg *= (1 - tf.eye(tf.shape(mask_bkg)[1]))[None]  # Exclude the diagonal
+      
+      bkg_loss = -K.sum(O_feat*K.log(O_feat/(bkg+eps)+eps),-1) * mask_bkg / 6
+      bkg_loss = K.sum(bkg_loss,[-1,-2])/(K.sum(mask_bkg,[-1,-2])+eps)
+      add_loss(bkg_loss, "bkg")
 
+      
     ################################
     # Common loss functions
     ################################
@@ -426,6 +428,7 @@ class mk_design_model:
     ################################
     self.out_label = ['grad', 'loss', 'feat', 'seq_prob'] + list(self.ex_out_k)
     self.model = Model(inputs, [grad,loss,O_feat,I_soft] + list(ex_out_v))
+    
 
   ###############################################################################
   # DO DESIGN

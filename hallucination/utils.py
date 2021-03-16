@@ -600,3 +600,92 @@ def MCMC_biased(seq_curr, seq_prop, B_choice, L_start, L_range=20, p_indel=0.3):
 
   return seq_new, seq_curr
 
+
+def apply_mask(mask, pdb_out):
+  '''
+  Uniformly samples gap lengths, then gathers the ref features
+  into the target hal features
+  
+  Inputs:
+  mask: specify the order and ranges of contigs and gaps
+        Contig - A continuous range of residues from the pdb.
+                Inclusive of the begining and end
+                Must start with the chain number
+                ex: B6-11
+        Gap - a range of gaps lengths the model is free to hallucinate
+                Gap ranges are inclusive of the end
+                ex: 9-21
+
+        ex - '3-3,B6-11,9-21,A36-42,20-30,A12-24,3-6'
+  
+  pdb_out: dictionary from the prep_input function
+  
+  '''
+  
+  ref_pdb_2_idx0 = {pdb_idx:i for i, pdb_idx in enumerate(pdb_out['pdb_idx'])}
+  #ref_idx0_2_pdb = {i:pdb_idx for i, pdb_idx in enumerate(pdb_out['pdb_idx'])}
+  
+  #####################################
+  # make a map from hal_idx0 to ref_idx0. Has None for gap regions
+  #####################################
+  hal_2_ref_idx0 = []
+  for el in mask.split(','):
+
+    if el[0].isalpha():  # el is a contig
+      chain = el[0]
+      s,e = el[1:].split('-')
+      s,e = int(s), int(e)
+      
+      for i in range(s, e+1):
+        idx0 = ref_pdb_2_idx0[(chain, i)]
+        hal_2_ref_idx0.append(idx0)
+        
+    else:  # el is a gap
+      # sample gap length
+      s,e = el.split('-')
+      s,e = int(s), int(e)
+      gap_len = np.random.randint(s, e+1)
+      
+      hal_2_ref_idx0 += [None]*gap_len
+      
+      
+  #####################################
+  # rearrange ref features according to the mask
+  #####################################
+  # find corresponding idx0 in hal and ref
+  hal_idx0 = []
+  ref_idx0 = []
+  
+  for hal, ref in enumerate(hal_2_ref_idx0):
+    if ref is not None:
+      hal_idx0.append(hal)
+      ref_idx0.append(ref)
+      
+  hal_idx0 = np.array(hal_idx0, dtype=int)
+  ref_idx0 = np.array(ref_idx0, dtype=int)
+      
+  # rearrange the 6D features
+  hal_len = len(hal_2_ref_idx0)
+  d_feat = pdb_out['feat'].shape[-1]
+  
+  feat_hal = np.zeros([1, hal_len, hal_len, d_feat])
+  feat_ref = pdb_out['feat'][None]
+  feat_hal[:, hal_idx0[:,None], hal_idx0[None,:]] = feat_ref[:, ref_idx0[:,None], ref_idx0[None,:]]
+      
+  # make the 1d binary mask, for backwards compatibility
+  hal_2_ref_idx0 = np.array(hal_2_ref_idx0, dtype=np.float32)  # convert None to NaN
+  mask_1d = (~np.isnan(hal_2_ref_idx0)).astype(float)
+  mask_1d = mask_1d[None]
+  
+  
+  #####################################
+  # mappings between hal and ref
+  #####################################
+  mappings = {
+    'con_hal_idx0': hal_idx0.tolist(),
+    'con_ref_idx0': ref_idx0.tolist(),
+    'con_hal_pdb_idx': [('A',i+1) for i in hal_idx0],
+    'con_ref_pdb_idx': [pdb_out['pdb_idx'][i] for i in ref_idx0]
+  }
+  
+  return feat_hal, mappings
