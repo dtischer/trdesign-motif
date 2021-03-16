@@ -689,3 +689,4 @@ def apply_mask(mask, pdb_out):
   }
   
   return feat_hal, mappings
+
