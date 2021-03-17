@@ -55,6 +55,7 @@ def main(argv):
   You can reorder the contigs from the pdb too!
   ex: 'B6-11,9-21,A36-42,20-30,A12-24'
   ''')
+  p.add_argument('--min_gap',       default=0,    type=int, help='Minimum gap length with randomly placing contigs')
   p.add_argument('--stat_place',    default=False, type=str2bool, help='Contigs are randomly placed (preserving order) but do not move')
   p.add_argument('--spike',         default=0.0, type=float, help='initialize design from pdb seq')
   p.add_argument('--predict_loss',  default=None, type=str, help='predict losses for sequences in file (in fasta format)')
@@ -111,7 +112,7 @@ def main(argv):
   Range specified same way as for the contigs. All residues must be a subset of the contigs
   ex: A10-10,A21-21,A34-34 to add a separate cce term for the geometry of residues A10,A21 and A34 in the reference pdb.''')
   p.add_argument('--keep_order',    default=False, type=str2bool, help='keep the order of the contigs as provided')
-  p.add_argument('--cs_method',     default='dt', type=str, help="ContigSearch algorithm to use <'dt','ia'>")
+  p.add_argument('--cs_method',     default='dt', type=str, help="ContigSearch algorithm to use <'dt','ia','random'>")
   #-------------------------------------------------------------------------------------
   # MRF kwargs
   #-------------------------------------------------------------------------------------   
@@ -152,8 +153,8 @@ def main(argv):
   ##########################################
   # Dependent arguments
   ##########################################
-  if (o.contigs is not None or o.mask is not None) and o.loss_pdb is None: o.loss_pdb = 1.0
-  if (o.contigs is not None or o.mask is not None) and o.loss_bkg is None: o.loss_bkg = 1.0
+  if o.contigs is not None and o.loss_pdb is None: o.loss_pdb = 1.0
+  if o.contigs is not None and o.loss_bkg is None: o.loss_bkg = 1.0
   if o.hbnets is not None and o.loss_hbn is None: o.loss_hbn = 1.0
   if o.seq_mode == 'MSA' and o.feat_drop is None: o.feat_drop = 0.2
     
@@ -268,6 +269,8 @@ def main(argv):
       mask_contigs = [el for el in o.mask_v2.split(',') if el[0].isalpha()]
       mask_contigs = ','.join(mask_contigs)
       kw_MaskMode['contigs'] = parse_contigs(mask_contigs, pdb_out["pdb_idx"])
+    if (o.cs_method=='random') and (o.hbnets is not None):
+      kw_MaskMode['contigs'] = parse_contigs(o.contigs, pdb_out["pdb_idx"])
     
     # spike in the pdb sequence
     seq_start = None
@@ -401,145 +404,158 @@ def main(argv):
           #save
           lines.append(save_result(to_save, f"{o.out}_{name.replace('>','')}", o))
     
-    elif o.contigs is not None:
-      if o.cs_method == 'dt':
-        ######################################
-        # DOUG'S HYBRID BACKBONE DESIGN
-        ######################################
-        L = int(np.random.choice(L_range))
-        print(f'Hallucinating protein of length {L}')
-        kw_OptSettings['L_start'] = L
+    
+    elif (o.contigs is not None) and (o.cs_method == 'dt'):
+      ######################################
+      # DOUG'S HYBRID BACKBONE DESIGN
+      ######################################
+      L = int(np.random.choice(L_range))
+      print(f'Hallucinating protein of length {L}')
+      kw_OptSettings['L_start'] = L
 
-        output = model.design(**kw_OptSettings)
-        
-        # force contig geo
-        if o.force_contig_geo:
-          output['feat'] = force_contig_geo(output['feat'], pdb_out['feat'], output['track_best'])
-          
-        # record all input settings
-        output['track_best']['settings'] = vars(o)  # converts values of obj attributes to dict
-        
-        save_result(output, f"{o.out}_{n}", o)
-        
-      elif o.cs_method == 'ia':
-        ######################################
-        # IVAN'S HYBRID BACKBONE DESIGN
-        ######################################
-        L = kw_probe_bsite['L']
-        print(f'Hallucinating protein of length {L}')
-        kw_OptSettings['L_start'] = L
-        print(f"kw_OptSettings['L_start']: {kw_OptSettings['L_start']}")
+      output = model.design(**kw_OptSettings)
 
-        output = model.design(**kw_OptSettings)
-        
-        # record all input settings
-        output['track_best']['settings'] = vars(o)  # converts values of obj attributes to dict
-        
-        ##############
-        # Calculate contig location
-        ##############
-        p2d_ = output['feat']
-        bs_ij_ = output['track_best']['bsite_ij']
-        bsite_nfrag = len(kw_ContigSearch['contigs'])
-        NRES = L
+      # force contig geo
+      if o.force_contig_geo:
+        output['feat'] = force_contig_geo(output['feat'], pdb_out['feat'], output['track_best'])
 
-        # fragment sizes and residue indices
-        bsite = kw_probe_bsite['bsite']
-        bsite_idx = kw_probe_bsite['idx']
-        bsite_nres = bsite_idx.shape[0]
-        j = np.cumsum([0]+[bsite_idx[i]>bsite_idx[i-1]+1 for i in range(1,bsite_nres)])
-        fs = np.array([np.sum(j==i) for i in range(j[-1]+1)])
-        fi = [np.where(j==i)[0] for i in range(j[-1]+1)]
-        
-        if False:
-          print('p2d_', p2d_.shape, p2d_)
-          print('bs_ij_', bs_ij_.shape, bs_ij_)
-          print('bsite_nfrag', bsite_nfrag)
-          print('NRES', NRES)
-          print('bsite_idx', bsite_idx)
-          print('bsite_nres', bsite_nres)
-          print(j)
-          print(fs)
-          print(fi)
-        
-        # check binding site
-        i2 = np.argsort(bs_ij_[0].flatten())[-(bsite_nfrag**2-bsite_nfrag):]
-        G = nx.Graph()
-        G.add_nodes_from([i for i in range(NRES)])
-        G.add_edges_from([(i%NRES,i//NRES) for i in i2])
-        max_clique_size = nx.algorithms.max_weight_clique(G,weight=None)[1]
+      # record all input settings
+      output['track_best']['settings'] = vars(o)  # converts values of obj attributes to dict
 
-        if max_clique_size > bsite_nfrag:
-            max_clique_size = bsite_nfrag
+      save_result(output, f"{o.out}_{n}", o)
 
-        max_cliques = [c for c in nx.algorithms.enumerate_all_cliques(G) 
-                       if len(c)==max_clique_size]
-
-        print("bs size: %d out of %d"%(max_clique_size, bsite_nfrag), max_cliques)
-
-        # enumerate all possible fragment orders and
-        # identify the best scoring one
-        trials = []
-        for clique in max_cliques:
-            for p in permutations(range(len(fs)),max_clique_size):
-                p = np.array(p)
-                a = np.hstack([np.arange(j)+i-(j-1)//2 for i,j in zip(clique,fs[p])])
-
-                # skip if out of sequence range
-                if np.sum(a<0)>0 or np.sum(a>=NRES)>0:
-                    continue
-
-                # skip if fragments clash
-                if np.unique(a).shape[0]!=a.shape[0]:
-                    continue
-
-                b = np.hstack([fi[i] for i in p])
-
-                P = p2d_[np.ix_(a,a.T)]
-                Q = bsite[np.ix_(b,b.T)]
-                s = np.mean(np.sum(-np.log(P)*Q,axis=-1))/4
-                trials.append((s,a,b,p))
-                
-        trials.sort(key=lambda x: x[0])
-        
-        # add results to tracker
-        trb = output['track_best']
-        pdb_idx = kw_OptSettings['pdb_idx']
-        if (len(trials) == 0) or (max_clique_size != bsite_nfrag):
-          print('No motif matches could be found :(')
-          trb['con_ref_idx0'] = kw_probe_bsite['idx'][None]
-          trb['con_hal_idx0'] = None
-          trb['con_ref_pdb_idx'] = [pdb_idx[idx0] for idx0 in trb['con_ref_idx0'][0]]
-          trb['con_hal_pdb_idx'] = None
-        else:
-          best=trials[0]
-          zscore = stats.zscore([t[0] for t in trials])[0]
-          print("best: score= %.5f   zscore= %.5f   trials= %d   order="%(best[0],zscore,len(trials)), best[3])
-          sys.stdout.flush()
-          
-          # order hal cons to match ref cons
-          order = best[3]
-          print('original ordering', best[1], order)
-          best_cons = np.array(idxs2cons(best[1]))  # convert idx to con ranges
-          best_cons_ordered = best_cons[np.argsort(order)]  # sort into the original contig order
-          con_hal_idx0 = np.array(cons2idxs(best_cons_ordered))  # convert back to idxs
-          print('new ordering', con_hal_idx0)
-          
-          trb['con_ref_idx0'] = kw_probe_bsite['idx'][None]  # spoof batch dim to be consistent
-          trb['con_hal_idx0'] = con_hal_idx0[None]  # spoof batch dim to be consistent
-          trb['con_ref_pdb_idx'] = [pdb_idx[idx0] for idx0 in trb['con_ref_idx0'][0]]  # [('A', 1)]
-          trb['con_hal_pdb_idx'] = [('A', idx0+1) for idx0 in trb['con_hal_idx0'][0]]
       
-        # force contig geo
-        if o.force_contig_geo:
-          output['feat'] = force_contig_geo(output['feat'], pdb_out['feat'], trb)
-      
-        # save results
-        save_result(output, f"{o.out}_{n}", o)
+    elif (o.contigs is not None) and (o.cs_method == 'ia'):
+      ######################################
+      # IVAN'S HYBRID BACKBONE DESIGN
+      ######################################
+      L = kw_probe_bsite['L']
+      print(f'Hallucinating protein of length {L}')
+      kw_OptSettings['L_start'] = L
+      print(f"kw_OptSettings['L_start']: {kw_OptSettings['L_start']}")
+
+      output = model.design(**kw_OptSettings)
+
+      # record all input settings
+      output['track_best']['settings'] = vars(o)  # converts values of obj attributes to dict
+
+      ##############
+      # Calculate contig location
+      ##############
+      p2d_ = output['feat']
+      bs_ij_ = output['track_best']['bsite_ij']
+      bsite_nfrag = len(kw_ContigSearch['contigs'])
+      NRES = L
+
+      # fragment sizes and residue indices
+      bsite = kw_probe_bsite['bsite']
+      bsite_idx = kw_probe_bsite['idx']
+      bsite_nres = bsite_idx.shape[0]
+      j = np.cumsum([0]+[bsite_idx[i]>bsite_idx[i-1]+1 for i in range(1,bsite_nres)])
+      fs = np.array([np.sum(j==i) for i in range(j[-1]+1)])
+      fi = [np.where(j==i)[0] for i in range(j[-1]+1)]
+
+      if False:
+        print('p2d_', p2d_.shape, p2d_)
+        print('bs_ij_', bs_ij_.shape, bs_ij_)
+        print('bsite_nfrag', bsite_nfrag)
+        print('NRES', NRES)
+        print('bsite_idx', bsite_idx)
+        print('bsite_nres', bsite_nres)
+        print(j)
+        print(fs)
+        print(fi)
+
+      # check binding site
+      i2 = np.argsort(bs_ij_[0].flatten())[-(bsite_nfrag**2-bsite_nfrag):]
+      G = nx.Graph()
+      G.add_nodes_from([i for i in range(NRES)])
+      G.add_edges_from([(i%NRES,i//NRES) for i in i2])
+      max_clique_size = nx.algorithms.max_weight_clique(G,weight=None)[1]
+
+      if max_clique_size > bsite_nfrag:
+          max_clique_size = bsite_nfrag
+
+      max_cliques = [c for c in nx.algorithms.enumerate_all_cliques(G) 
+                     if len(c)==max_clique_size]
+
+      print("bs size: %d out of %d"%(max_clique_size, bsite_nfrag), max_cliques)
+
+      # enumerate all possible fragment orders and
+      # identify the best scoring one
+      trials = []
+      for clique in max_cliques:
+          for p in permutations(range(len(fs)),max_clique_size):
+              p = np.array(p)
+              a = np.hstack([np.arange(j)+i-(j-1)//2 for i,j in zip(clique,fs[p])])
+
+              # skip if out of sequence range
+              if np.sum(a<0)>0 or np.sum(a>=NRES)>0:
+                  continue
+
+              # skip if fragments clash
+              if np.unique(a).shape[0]!=a.shape[0]:
+                  continue
+
+              b = np.hstack([fi[i] for i in p])
+
+              P = p2d_[np.ix_(a,a.T)]
+              Q = bsite[np.ix_(b,b.T)]
+              s = np.mean(np.sum(-np.log(P)*Q,axis=-1))/4
+              trials.append((s,a,b,p))
+
+      trials.sort(key=lambda x: x[0])
+
+      # add results to tracker
+      trb = output['track_best']
+      pdb_idx = kw_OptSettings['pdb_idx']
+      if (len(trials) == 0) or (max_clique_size != bsite_nfrag):
+        print('No motif matches could be found :(')
+        trb['con_ref_idx0'] = kw_probe_bsite['idx'][None]
+        trb['con_hal_idx0'] = None
+        trb['con_ref_pdb_idx'] = [pdb_idx[idx0] for idx0 in trb['con_ref_idx0'][0]]
+        trb['con_hal_pdb_idx'] = None
+      else:
+        best=trials[0]
+        zscore = stats.zscore([t[0] for t in trials])[0]
+        print("best: score= %.5f   zscore= %.5f   trials= %d   order="%(best[0],zscore,len(trials)), best[3])
+        sys.stdout.flush()
+
+        # order hal cons to match ref cons
+        order = best[3]
+        print('original ordering', best[1], order)
+        best_cons = np.array(idxs2cons(best[1]))  # convert idx to con ranges
+        best_cons_ordered = best_cons[np.argsort(order)]  # sort into the original contig order
+        con_hal_idx0 = np.array(cons2idxs(best_cons_ordered))  # convert back to idxs
+        print('new ordering', con_hal_idx0)
+
+        trb['con_ref_idx0'] = kw_probe_bsite['idx'][None]  # spoof batch dim to be consistent
+        trb['con_hal_idx0'] = con_hal_idx0[None]  # spoof batch dim to be consistent
+        trb['con_ref_pdb_idx'] = [pdb_idx[idx0] for idx0 in trb['con_ref_idx0'][0]]  # [('A', 1)]
+        trb['con_hal_pdb_idx'] = [('A', idx0+1) for idx0 in trb['con_hal_idx0'][0]]
+
+      # force contig geo
+      if o.force_contig_geo:
+        output['feat'] = force_contig_geo(output['feat'], pdb_out['feat'], trb)
+
+      # save results
+      save_result(output, f"{o.out}_{n}", o)
           
-    elif o.mask_v2 is not None:
-      # apply the mask to the ref pdb features
-      feat_hal, mappings = apply_mask(o.mask_v2, pdb_out)      
+        
+    elif (o.mask_v2 is not None) or ((o.contigs is not None) and (o.cs_method=='random')):
+      ######################################
+      # Fixed contig placement methods
+      ######################################
+      if o.mask_v2 is not None:
+        # apply the mask to the ref pdb features
+        feat_hal, mappings = apply_mask(o.mask_v2, pdb_out)      
+        
+      elif o.cs_method=='random':
+        print('Placing contigs randomly')
+        # place contigs randomly
+        feat_hal, mappings = scatter_contigs(o.contigs, pdb_out, L_range=o.len, keep_order=o.keep_order, min_gap=o.min_gap)
+        
+      # these are the pdb features we're trying to hallucinate
       graph_inputs_['pdb'] = feat_hal
       
       # note length
@@ -553,11 +569,7 @@ def main(argv):
         
       if o.feat_drop_pdb is not None:
         mask_1d = mappings['mask_1d']  # (batch, L)
-        mask_2d = mask_1d[:, :, None]*mask_1d[:, None, :]
-        
-        print(mask_1d)
-        print(mask_2d)
-        
+        mask_2d = mask_1d[:, :, None]*mask_1d[:, None, :]        
         graph_inputs_['pdb_mask_2d'] = mask_2d.astype(bool)
       
       # run model!

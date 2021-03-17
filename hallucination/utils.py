@@ -1,6 +1,6 @@
 # load libraries
 import numpy as np
-import string, sys, getopt, copy
+import string, sys, getopt, copy, random
 from operator import itemgetter
 
 # ivan's natural AA composition
@@ -601,6 +601,50 @@ def MCMC_biased(seq_curr, seq_prop, B_choice, L_start, L_range=20, p_indel=0.3):
   return seq_new, seq_curr
 
 
+def mk_feat_hal_and_mappings(hal_2_ref_idx0, pdb_out):
+  #####################################
+  # rearrange ref features according to hal_2_ref_idx0
+  #####################################
+  #1. find corresponding idx0 in hal and ref
+  hal_idx0 = []
+  ref_idx0 = []
+  
+  for hal, ref in enumerate(hal_2_ref_idx0):
+    if ref is not None:
+      hal_idx0.append(hal)
+      ref_idx0.append(ref)
+      
+  hal_idx0 = np.array(hal_idx0, dtype=int)
+  ref_idx0 = np.array(ref_idx0, dtype=int)
+      
+  #2. rearrange the 6D features
+  hal_len = len(hal_2_ref_idx0)
+  d_feat = pdb_out['feat'].shape[-1]
+  
+  feat_hal = np.zeros([1, hal_len, hal_len, d_feat])
+  feat_ref = pdb_out['feat'][None]
+  feat_hal[:, hal_idx0[:,None], hal_idx0[None,:]] = feat_ref[:, ref_idx0[:,None], ref_idx0[None,:]]
+      
+  #3. make the 1d binary mask, for backwards compatibility
+  hal_2_ref_idx0 = np.array(hal_2_ref_idx0, dtype=np.float32)  # convert None to NaN
+  mask_1d = (~np.isnan(hal_2_ref_idx0)).astype(float)
+  mask_1d = mask_1d[None]
+  
+  
+  #####################################
+  # mappings between hal and ref
+  #####################################
+  mappings = {
+    'con_hal_idx0': hal_idx0.tolist(),
+    'con_ref_idx0': ref_idx0.tolist(),
+    'con_hal_pdb_idx': [('A',i+1) for i in hal_idx0],
+    'con_ref_pdb_idx': [pdb_out['pdb_idx'][i] for i in ref_idx0],
+    'mask_1d': mask_1d,
+  }
+  
+  return feat_hal, mappings
+
+
 def apply_mask(mask, pdb_out):
   '''
   Uniformly samples gap lengths, then gathers the ref features
@@ -624,9 +668,7 @@ def apply_mask(mask, pdb_out):
   
   ref_pdb_2_idx0 = {pdb_idx:i for i, pdb_idx in enumerate(pdb_out['pdb_idx'])}
   
-  #####################################
-  # make a map from hal_idx0 to ref_idx0. Has None for gap regions
-  #####################################
+  #1. make a map from hal_idx0 to ref_idx0. Has None for gap regions
   hal_2_ref_idx0 = []
   for el in mask.split(','):
 
@@ -646,46 +688,87 @@ def apply_mask(mask, pdb_out):
       gap_len = np.random.randint(s, e+1)
       hal_2_ref_idx0 += [None]*gap_len
       
-      
-  #####################################
-  # rearrange ref features according to the mask
-  #####################################
-  # find corresponding idx0 in hal and ref
-  hal_idx0 = []
-  ref_idx0 = []
-  
-  for hal, ref in enumerate(hal_2_ref_idx0):
-    if ref is not None:
-      hal_idx0.append(hal)
-      ref_idx0.append(ref)
-      
-  hal_idx0 = np.array(hal_idx0, dtype=int)
-  ref_idx0 = np.array(ref_idx0, dtype=int)
-      
-  # rearrange the 6D features
-  hal_len = len(hal_2_ref_idx0)
-  d_feat = pdb_out['feat'].shape[-1]
-  
-  feat_hal = np.zeros([1, hal_len, hal_len, d_feat])
-  feat_ref = pdb_out['feat'][None]
-  feat_hal[:, hal_idx0[:,None], hal_idx0[None,:]] = feat_ref[:, ref_idx0[:,None], ref_idx0[None,:]]
-      
-  # make the 1d binary mask, for backwards compatibility
-  hal_2_ref_idx0 = np.array(hal_2_ref_idx0, dtype=np.float32)  # convert None to NaN
-  mask_1d = (~np.isnan(hal_2_ref_idx0)).astype(float)
-  mask_1d = mask_1d[None]
-  
-  
-  #####################################
-  # mappings between hal and ref
-  #####################################
-  mappings = {
-    'con_hal_idx0': hal_idx0.tolist(),
-    'con_ref_idx0': ref_idx0.tolist(),
-    'con_hal_pdb_idx': [('A',i+1) for i in hal_idx0],
-    'con_ref_pdb_idx': [pdb_out['pdb_idx'][i] for i in ref_idx0],
-    'mask_1d': mask_1d,
-  }
+  #2. Convert mask to feat_hal and mappings 
+  feat_hal, mappings = mk_feat_hal_and_mappings(hal_2_ref_idx0, pdb_out)
   
   return feat_hal, mappings
 
+
+def scatter_contigs(contigs, pdb_out, L_range, keep_order=False, min_gap=0):
+  '''
+  Randomly places contigs in a protein within the length range.
+  
+  Inputs
+    Contig: A continuous range of residues from the pdb.
+            Inclusive of the begining and end
+            Must start with the chain number
+            ex: B6-11
+    pdb_out: dictionary from the prep_input function
+    L_range: String range of possible lengths.
+              ex: 90-110
+              ex: 70
+    keep_order: keep contigs in the provided order or randomly permute
+    min_gap: minimum number of amino acids separating contigs
+    
+  Outputs
+    feat_hal: target pdb features to hallucinate
+    mappings: dictionary of ways to convert from the hallucinated protein
+              to the reference protein  
+  
+  '''
+  
+  ref_pdb_2_idx0 = {pdb_idx:i for i, pdb_idx in enumerate(pdb_out['pdb_idx'])}
+  
+  #####################################
+  # make a map from hal_idx0 to ref_idx0. Has None for gap regions
+  #####################################
+  #1. Permute contig order
+  contigs = contigs.split(',')
+  
+  if not keep_order:
+    random.shuffle(contigs)
+    
+  #2. convert to ref_idx0
+  contigs_ref_idx0 = []
+  for con in contigs:
+    chain = con[0]
+    s, e = map(int, con[1:].split('-'))
+    contigs_ref_idx0.append( [ref_pdb_2_idx0[(chain, i)] for i in range(s, e+1)] )
+  
+  #3. Add minimum gap size
+  for i in range(len(contigs_ref_idx0) - 1):
+    contigs_ref_idx0[i] += [None] * min_gap
+    
+  #4. Sample protein length
+  if '-' in L_range:
+    L_low, L_high = map(int, L_range.split('-'))
+  else:
+    L_low, L_high = int(L_range), int(L_range)
+    
+  L_hal = np.random.randint(L_low, L_high+1)
+  
+  L_con = 0
+  for con in contigs_ref_idx0:
+    L_con += len(con)
+    
+  L_gaps = L_hal - L_con
+  
+  if L_gaps <= 1:
+    print("Error: The protein isn't long enough to incorporate all the contigs."
+          "Consider reduce the min_gap or increasing L_range")
+    return
+  
+  #5. Randomly insert contigs into gaps
+  hal_2_ref_idx0 = np.array([None] * L_gaps, dtype=float)  # inserting contigs into this
+  n_contigs = len(contigs_ref_idx0)  
+  insertion_idxs = np.random.randint(L_gaps + 1, size=n_contigs)
+  insertion_idxs.sort()
+  
+  for idx, con in zip(insertion_idxs[::-1], contigs_ref_idx0[::-1]):
+    hal_2_ref_idx0 = np.insert(hal_2_ref_idx0, idx, con)
+    
+  #6. Convert mask to feat_hal and mappings
+  hal_2_ref_idx0 = [int(el) if ~np.isnan(el) else None for el in hal_2_ref_idx0]  # convert nan to None
+  feat_hal, mappings = mk_feat_hal_and_mappings(hal_2_ref_idx0, pdb_out)
+    
+  return feat_hal, mappings

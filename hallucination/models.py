@@ -260,58 +260,57 @@ class mk_design_model:
     # CE and KL loss for FLEXIBLE contig placement
     ################################
     L = tf.shape(I_feat)[1]
-    if loss_contigs:
-      if cs_method == 'dt':
-        ################################
-        # Doug's contig search algorithm
-        ################################
-        # make inputs on the graph
-        # (pdb geometry passed in construction of ContigSearch layer)
-        bkg = add_input([None,None,138], 'bkg')
-        beta_cs = add_input([], 'beta_cs')
+    if (loss_contigs) and (cs_method == 'dt'):
+      ################################
+      # Doug's contig search algorithm
+      ################################
+      # make inputs on the graph
+      # (pdb geometry passed in construction of ContigSearch layer)
+      bkg = add_input([None,None,138], 'bkg')
+      beta_cs = add_input([], 'beta_cs')
 
-        # search
-        kw_cs = {'weight_cce':loss_weights[0,0], 'weight_kl':loss_weights[0,1]}  # is there a less hacky way to do this? Can't reference loss_label because the loss terms have't been added yet!
-        cs = ContigSearch(**kw_ContigSearch)
-        best_cce_unweighted, best_kl_unweighted, best_con_idxs0, branch_weights, branch_losses, branch_con_idxs0 = cs([O_feat, bkg, beta_cs], **kw_cs)
-        add_loss(best_cce_unweighted[None], 'pdb')
-        add_loss(best_kl_unweighted[None], 'bkg')
-        best_con_idxs0 = tf.stop_gradient(best_con_idxs0)
-        branch_con_idxs0 = tf.stop_gradient(branch_con_idxs0)
-        
-        # note idx0 of con_ref for hbnet loss
-        con_ref = tf.constant(cons2idxs(kw_ContigSearch['contigs']))
-        ref2hal = mk_ref2hal(con_ref, branch_con_idxs0)
-        
-        # add outputs
-        add_output(best_con_idxs0[None], "con_hal_idx0")
-        add_output(con_ref[None], "con_ref_idx0")
-        add_output(branch_weights[None], 'branch_weights')
-        add_output(branch_losses[None], 'branch_losses')
-        add_output(branch_con_idxs0[None], 'branch_con_idxs0')
+      # search
+      kw_cs = {'weight_cce':loss_weights[0,0], 'weight_kl':loss_weights[0,1]}  # is there a less hacky way to do this? Can't reference loss_label because the loss terms have't been added yet!
+      cs = ContigSearch(**kw_ContigSearch)
+      best_cce_unweighted, best_kl_unweighted, best_con_idxs0, branch_weights, branch_losses, branch_con_idxs0 = cs([O_feat, bkg, beta_cs], **kw_cs)
+      add_loss(best_cce_unweighted[None], 'pdb')
+      add_loss(best_kl_unweighted[None], 'bkg')
+      best_con_idxs0 = tf.stop_gradient(best_con_idxs0)
+      branch_con_idxs0 = tf.stop_gradient(branch_con_idxs0)
+
+      # note idx0 of con_ref for hbnet loss
+      con_ref = tf.constant(cons2idxs(kw_ContigSearch['contigs']))
+      ref2hal = mk_ref2hal(con_ref, branch_con_idxs0)
+
+      # add outputs
+      add_output(best_con_idxs0[None], "con_hal_idx0")
+      add_output(con_ref[None], "con_ref_idx0")
+      add_output(branch_weights[None], 'branch_weights')
+      add_output(branch_losses[None], 'branch_losses')
+      add_output(branch_con_idxs0[None], 'branch_con_idxs0')
       
-      elif cs_method == 'ia':
-        ################################
-        # Ivan's contig search algorithm
-        ################################
-        bkg = add_input([None,None,138], 'bkg')
-        beta_ia = add_input([None,], 'beta_ia')
-        cce_sat, cce_consist, bsite_ij = probe_bsite_tf_frag(O_feat, beta=beta_ia[0,0], **kw_probe_bsite)
+    elif (loss_contigs) and (cs_method == 'ia'):
+      ################################
+      # Ivan's contig search algorithm
+      ################################
+      bkg = add_input([None,None,138], 'bkg')
+      beta_ia = add_input([None,], 'beta_ia')
+      cce_sat, cce_consist, bsite_ij = probe_bsite_tf_frag(O_feat, beta=beta_ia[0,0], **kw_probe_bsite)
 
-        add_loss(cce_sat, 'pdb')
-        add_loss(cce_consist[None], 'cce_consist')
-        add_output(bsite_ij[None], 'bsite_ij')
+      add_loss(cce_sat, 'pdb')
+      add_loss(cce_consist[None], 'cce_consist')
+      add_output(bsite_ij[None], 'bsite_ij')
 
-        # kl loss over all ij pairs (except the diagonal)
-        diag_mask = 1 - tf.eye(tf.shape(O_feat)[1])
-        diag_mask = diag_mask[None]  # [batch, L, L]
-        bkg_loss = -K.sum(O_feat * K.log(O_feat / (bkg + eps) + eps), -1) / 6
-        bkg_loss *= diag_mask
-        add_loss(K.sum(bkg_loss,[-1,-2])/(K.sum(diag_mask,[-1,-2])+eps),"bkg")
+      # kl loss over all ij pairs (except the diagonal)
+      diag_mask = 1 - tf.eye(tf.shape(O_feat)[1])
+      diag_mask = diag_mask[None]  # [batch, L, L]
+      bkg_loss = -K.sum(O_feat * K.log(O_feat / (bkg + eps) + eps), -1) / 6
+      bkg_loss *= diag_mask
+      add_loss(K.sum(bkg_loss,[-1,-2])/(K.sum(diag_mask,[-1,-2])+eps),"bkg")
       
     else:
       ################################
-      # CE and KL for Mask Mode
+      # CE and KL for FIXED contig methods (Mask Mode or cs_method=random)
       ################################
       bkg = add_input([None,None,138], 'bkg')
       pdb = add_input([None,None,138], 'pdb')
