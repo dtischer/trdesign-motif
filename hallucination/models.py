@@ -156,7 +156,7 @@ class mk_design_model:
   # DO SETUP
   # Returns gradients of inputs wrt loss
   ###############################################################################
-  def __init__(self, seq_mode='MSA', feat_drop=None, loss_aa_comp=None,
+  def __init__(self, seq_mode='MSA', feat_drop=None, feat_drop_pdb=None, loss_aa_comp=None,
                loss_pdb=None, loss_bkg=None, loss_eng=None, loss_contacts=None,
                loss_aa_ref=None, loss_keep_out=None, cs_method=None, loss_contigs=None,
                loss_hbn=None, add_pdb_mask=None,
@@ -208,13 +208,27 @@ class mk_design_model:
       print("mode: single sequence design")
       I_feat = PSSM(**kw_PSSM)([I_hard,add_gap(I_hard)])
 
-    # add dropout to features
-    if feat_drop > 0 and feat_drop is not None:
+    # add dropout to features      
+    def add_dropout(I_feat, drop_rate):
       e = tf.eye(tf.shape(I_feat)[1])[None,:,:,None]
       I_feat_drop = tf.nn.dropout(I_feat,rate=feat_drop)
       # exclude dropout at the diagonal
       I_feat_drop = e*I_feat + (1-e)*I_feat_drop
-      I_feat = K.switch(train, I_feat_drop, I_feat)
+      return I_feat_drop
+      
+    if feat_drop is not None:
+      I_feat_drop = add_dropout(I_feat, feat_drop)
+    else:
+      I_feat_drop = I_feat
+      
+    if feat_drop_pdb is not None:
+      I_feat_drop_pdb = add_dropout(I_feat, feat_drop_pdb)
+      pdb_mask_2d = add_input([None,None], 'pdb_mask_2d', dtype=tf.bool)  # true if pair ij are both part of a contig
+      I_feat_drop = tf.where(pdb_mask_2d, I_feat_drop_pdb, I_feat_drop)
+      
+    # Only use dropout if train is True
+    I_feat = K.switch(train, I_feat_drop, I_feat)
+      
 
     ################################
     # output features
@@ -275,66 +289,6 @@ class mk_design_model:
         add_output(branch_weights[None], 'branch_weights')
         add_output(branch_losses[None], 'branch_losses')
         add_output(branch_con_idxs0[None], 'branch_con_idxs0')
-
-        '''        
-        # make LUTs for easy conversion between ref and hal idxs
-        con_ref = tf.constant(cons2idxs(kw_ContigSearch['contigs']))
-        def ref2hal(ref_idx):
-          
-          #This is a one to many operation. Want to return hal_idx for all branches
-          #Think of lut as (ref_idx, branch)
-
-          #Returns (branch, hal_idx) tensor
-          #Each row is what the ref_idx maps to in each branch returned by ContigSearch
-          
-          n_branch = tf.cast(tf.shape(branch_con_idxs0)[0], tf.int32)
-          lut_shape = (tf.math.reduce_max(con_ref)+1, n_branch)
-          lut = tf.scatter_nd(con_ref[:,None], tf.transpose(branch_con_idxs0, (1,0)), lut_shape)
-          hal_idx = tf.gather_nd(lut, ref_idx[:,None])
-          return tf.transpose(hal_idx, (1,0))
-
-        # add separate loss term for hbnet cce
-        if loss_hbn is not None:
-          # reference idx and geo.
-          hbn_ref_idx = np.array(cons2idxs(kw_hbnets['contigs']))
-          hbn_ref_geo = kw_ContigSearch['ptn_geo'][hbn_ref_idx[:,None], hbn_ref_idx[None,:]]
-          
-          # hal idx and geo. This has to be done in tf
-          hbn_hal_idx = ref2hal(hbn_ref_idx)
-          branch, n = tf.shape(hbn_hal_idx)[0], tf.shape(hbn_hal_idx)[1] 
-          a = tf.broadcast_to(hbn_hal_idx[:,:,None], (branch,n,n))
-          b = tf.broadcast_to(hbn_hal_idx[:,None,:], (branch,n,n))
-          gnd_idx = tf.stack([a, b], -1)
-          hbn_hal_geo = tf.gather_nd(O_feat[0], gnd_idx)
-          add_output(gnd_idx[None], 'gnd_idx')
-          add_output(hbn_hal_geo[None], 'hbn_hal_geo')
-          
-          # calculate cce
-          # 1. broadcast ref_geo to all gathered branches of hal_geo
-          hbn_ref_geo = tf.broadcast_to(hbn_ref_geo[None], tf.shape(hbn_hal_geo))  # (branch, hbn_idx, hbn_idx, 6D_geo)
-          add_output(hbn_ref_geo[None], 'hbn_ref_geo')
-          
-          # 2. Mask for diagonal and d > 20A
-          mask_hbn = tf.reduce_sum(hbn_ref_geo, -1) / 6
-          add_output(mask_hbn[None], 'mask_hbn')
-          
-          # 3. cce at every ij pair
-          cce_ij = tf.reduce_sum(-hbn_ref_geo * tf.log(hbn_hal_geo + eps), -1) / 6
-          add_output(cce_ij[None], 'cce_ij')
-          
-          # 4. Mean, unweighted cce of every ContigSearch branch. Excludes diagonal and d > 20
-          cce_mean_unweighted = tf.reduce_sum(mask_hbn * cce_ij, (1,2)) / tf.reduce_sum(mask_hbn, (1,2))  # (branch,)
-          add_output(cce_mean_unweighted[None], 'cce_mean_unweighted')
-          
-          # 5. Weighted superposition of all branches
-          cce_weighted = cce_mean_unweighted * branch_weights
-          add_loss(tf.reduce_sum(cce_weighted)[None], 'hbn')
-          
-          # track outputs
-          add_output(branch_con_idxs0[None], 'branch_con_idxs0')
-          add_output(hbn_hal_idx[None], 'hbn_hal_idx')
-          add_output(cce_weighted[None], 'hbn_cce_weighted')
-        '''
       
       elif cs_method == 'ia':
         ################################

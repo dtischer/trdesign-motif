@@ -78,6 +78,7 @@ def main(argv):
   p.add_argument('--bin_width',     default='15_deg', type=str, help="What flavor trRosetta model to use. <'15_deg', '10_deg'> angle bins")
   p.add_argument('--seq_mode',      default='MSA', type=str, help="What do the logits represent? ['MSA','PSSM','SEQ']")
   p.add_argument('--feat_drop',     default=None, type=float, help='dropout rate for features')
+  p.add_argument('--feat_drop_pdb', default=None, type=float, help='dropout rate for ij pairs that are part of a contig. Only compatible with mask_v2.')
   p.add_argument('--loss_pdb',      default=None, type=float, help='weight for pdb loss')
   p.add_argument('--loss_bkg',      default=None, type=float, help='weight for bkg loss')
   p.add_argument('--loss_eng',      default=None, type=float, help="weight for an 'energy' loss")
@@ -549,6 +550,15 @@ def main(argv):
       # info for hbnet CCE loss
       if o.loss_hbn is not None:
         graph_inputs_['con_hal_idx0'] = np.array(mappings['con_hal_idx0'])[None, None]  # spoof leading (batch, branch) dims
+        
+      if o.feat_drop_pdb is not None:
+        mask_1d = mappings['mask_1d']  # (batch, L)
+        mask_2d = mask_1d[:, :, None]*mask_1d[:, None, :]
+        
+        print(mask_1d)
+        print(mask_2d)
+        
+        graph_inputs_['pdb_mask_2d'] = mask_2d.astype(bool)
       
       # run model!
       output = model.design(**kw_OptSettings)
