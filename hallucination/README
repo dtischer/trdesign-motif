@@ -1,0 +1,75 @@
+Input options for hallucinating proteins
+
+#############################################
+Method 1: Place contigs on the fly during hallucination, using dt's method
+#############################################
+Required arguments
+--pdb=...
+--contigs=...
+--len=...
+--cs_method=dt (this is the default cs_method)
+
+Optional arguments
+--hbnets=...
+--keep_order=<True, False>
+--fix_N=<True, False>
+--fix_C=<True, False>
+--beta_i=...
+--beta_f=...
+
+Example:
+./design.py -o example --pdb=/home/dtischer/projects/discon_motifs/data/benchmarks/C3D/relaxed/C3d_relaxed.pdb --contigs=A104-126,A170-185 --len=95-115 -n 100 --hbnets=A119-119,A123-123,A175-175
+
+
+#############################################
+Method 2: Place contigs on the fly during hallucination, using ia's method
+#############################################
+Required arguments
+--pdb=...
+--contigs=...
+--len=<an integer>
+--cs_method=ia
+
+Optional arguments
+--beta_i=...
+--beta_f=...
+
+Example:
+./design.py -o example --pdb=/home/dtischer/projects/discon_motifs/data/benchmarks/C3D/relaxed/C3d_relaxed.pdb --contigs=A104-126,A170-185 --len=95 -n 100 --hbnets=A119-119,A123-123,A175-175 --cs_method=ia
+
+Notes:
+The --len arugment must be a single integer. This method does not support making variable length proteins.
+Contig placement is not guaranteed to be the same order as in --contigs
+
+#############################################
+Method 3: Sample gaps lengths between contigs
+#############################################
+Required arguments
+--mask_v2=...
+--pdb=...
+
+Optional arguments
+--hbnets=...
+--feat_drop_pdb=...
+
+Examples:
+./design.py -o example --pdb=/home/jue/binder_mimic/pd1/template/pd1.pdb --mask_v2=A63-82,11-21,A122-128,13-27,A132-140 --n_models 1 -n 5 --hbnet A65-65,A125-125 --feat_drop_pdb=0.0
+
+
+#############################################
+Method 4: Randomly place contigs in proteins of a given length range
+#############################################
+Required arguments
+--cs_method=random
+--contigs=...
+--len=...
+--pdb=...
+
+Optional arguments
+--hbnets=...
+--keep_order=<True, False>
+--feat_drop_pdb=...
+--min_gap=...
+
+Examples:
+./design.py -o example --pdb=/home/jue/binder_mimic/pd1/template/pd1.pdb --contigs=A63-82,A122-128,A132-140 --n_models 1 -n 5 --len=60-90 --hbnet=A65-65,A125-125 --feat_drop_pdb=0.0 --min_gap=5 --cs_method=random 
