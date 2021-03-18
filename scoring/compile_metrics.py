@@ -108,36 +108,44 @@ def parse_cce(folder):
         return df
 
 def parse_all_metrics(folder):
+    df = pd.DataFrame()
+    df['name'] = []
+
     print(f'Parsing metrics in {folder}: ',end='')
-    df_lddt = parse_lddt(os.path.join(folder,'lddt'))
-    if df_lddt.shape[0]==0: df_lddt['name']=[]
-    print(f'lddt ({df_lddt.shape[0]}), ',end='')
+    tmp = parse_lddt(os.path.join(folder,'lddt'))
+    if tmp.shape[0]>0:
+        df = df.merge(tmp,on='name',how='outer')
+        print(f'lddt ({tmp.shape[0]}), ',end='')
 
     fn = os.path.join(folder,'pymol_metrics.csv')
     if os.path.exists(fn):
-        df_py = pd.read_csv(fn,index_col=0)
-    else:
-        df_py = pd.DataFrame({'name':[]})
-    print(f'pymol metrics ({df_py.shape[0]}), ',end='')
+        tmp = pd.read_csv(fn,index_col=0)
+        df = df.merge(tmp,on='name',how='outer')
+        print(f'pymol metrics ({tmp.shape[0]}), ',end='')
 
-    df_fd = parse_fastdesign_filters(os.path.join(folder))
-    if df_fd.shape[0]==0: df_fd['name']=[]
-    print(f'fastdesign metrics ({df_fd.shape[0]}), ',end='')
+    tmp = parse_fastdesign_filters(os.path.join(folder))
+    if tmp.shape[0]>0:
+        df = df.merge(tmp,on='name',how='outer')
+        print(f'fastdesign metrics ({tmp.shape[0]}), ',end='')
 
-    df_cce = parse_cce(os.path.join(folder,'trr_score'))
-    if df_cce.shape[0]==0: df_cce['name']=[]
-    print(f'cce ({df_cce.shape[0]}), ',end='')
+    tmp = parse_cce(os.path.join(folder,'trr_score'))
+    if tmp.shape[0]>0:
+        df = df.merge(tmp,on='name',how='outer')
+        print(f'cce ({tmp.shape[0]}), ',end='')
 
-    df_frag = parse_frag_qual(os.path.join(folder,'frags'))
-    if df_frag.shape[0]==0: df_frag['name']=[]
-    print(f'fragment quality ({df_frag.shape[0]}), ',end='')
+    tmp = parse_frag_qual(os.path.join(folder,'frags'))
+    if tmp.shape[0]>0:
+        df = df.merge(tmp,on='name',how='outer')
+        print(f'fragment quality ({tmp.shape[0]}), ',end='')
 
-    tmp = (df_lddt.merge(df_py,on='name',how='outer')
-           .merge(df_fd, on = 'name',how='outer')
-           .merge(df_cce, on = 'name',how='outer')
-           .merge(df_frag, on = 'name',how='outer'))
-    print(f'final dataframe shape: {tmp.shape}')
-    return tmp
+    fn = os.path.join(folder,'ss_frac.csv')
+    if os.path.exists(fn):
+        tmp = pd.read_csv(fn,index_col=0)
+        df = df.merge(tmp,on='name',how='outer')
+        print(f'sec. struct. frac ({tmp.shape[0]}), ',end='')
+
+    print(f'final dataframe shape: {df.shape}')
+    return df
 
 df = parse_all_metrics(args.folder)
 df.to_csv(args.out)
