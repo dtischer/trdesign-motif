@@ -23,6 +23,7 @@ pre=`basename $1`
 sbatch -J lddt.$pre $DIR/predict_lddt.sh $1
 $DIR/calc_cce.sh $1 cce.$pre
 sbatch -J frag.$pre $DIR/pick_frags_calc_qual.sh $1
+sbatch -J ss.$pre -c 2 --mem=6g --wrap="$DIR/get_ss_frac.py $1"
 if [ "$#" -eq 3 ]; then
     sbatch -J pymetric.$pre --mem=8g --wrap="$DIR/pymol_metrics.py --template $2 --receptor $3 $1"
 elif [ "$#" -eq 4 ]; then
