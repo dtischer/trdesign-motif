@@ -32,11 +32,10 @@ def main():
     parser.add_argument("PDB", type=str, help="input PDB with binding site residues")
     parser.add_argument("DIR", type=str, help="path for saving predictions")
     parser.add_argument('--len', type=int, default=100,  help='sequence length')
-    parser.add_argument('--contigs', type=str, dest='contigs', default=None, help='Regions to constrain, as comma-delimited numeric ranges (e.g. "3-10,24-32")')
     parser.add_argument('--num', type=int, dest='num', default=1,  help='number of models to generate')
     parser.add_argument('--start_num', type=int, dest='start_num', default=0,  help='index of first model filename')
+    parser.add_argument('--contigs', type=str, dest='contigs', default=None, help='Regions to constrain, as comma-delimited numeric ranges (e.g. "3-10,24-32")')
     parser.add_argument('--msa_num', type=int, default=1, help='number of hallucinated sequences to be added to the MSA')
-    parser.add_argument('--opt_iter', type=int, default=100, help='number of minimization steps')
     parser.add_argument('--w_sat', type=float, dest='ws', default=1.0, help='weight for the satisfaction term')
     parser.add_argument('--w_consist', type=float, dest='wc', default=1.0, help='weight for the consistency term')
     parser.add_argument('--w_clash', type=float, dest='wcl', default=1.0, help='weight for the clash term')
@@ -46,10 +45,12 @@ def main():
     parser.add_argument('--beta0', type=float, dest='b0', default=2.0, help='inverse temperature at the beginning of the minimization')
     parser.add_argument('--beta1', type=float, dest='b1', default=20.0, help='inverse temperature at the end of the minimization')
     parser.add_argument('--sample', dest='sample', action='store_true', help='perform NGD+sample')
+    parser.add_argument('--opt_iter', type=int, default=100, help='number of minimization steps')
     parser.add_argument('--seq_soft', dest='seq_soft', default=False, action='store_true', help='keep soft sequence representation')
     parser.set_defaults(sample=False)
     args = parser.parse_args()
 
+    # write settings file
     print(vars(args),file=open(args.DIR+'.set','w'))
 
     # load network parameters
@@ -58,12 +59,6 @@ def main():
 
     # parse binding site
     bsite_xyz,bsite_idx = parse_pdb(args.PDB,args.contigs)
-    
-    # *** temp ***
-    #bsite_idx[7:]+=10
-    #bsite_idx[14:]+=10
-    #bsite_idx[21:]+=10
-    # ************
     
     bsite = get_binned6d(bsite_xyz)
     bsite_nres  = bsite_idx.shape[0]
@@ -85,7 +80,6 @@ def main():
     # annealing parameters for bs imprinting
     beta_start = args.b0
     beta_shift = (args.b1-args.b0)/args.opt_iter
-
     
     ########################################################
     # 1. setup network
@@ -93,10 +87,6 @@ def main():
     
     # load network weights
     weights = load_weights('/home/aivan/for/GyuRie/trRosetta2/training/models',params)
-
-    # make sure graph and session are empty
-    #tf.keras.backend.clear_session()
-    #tf.reset_default_graph()
 
     # setup computation graph
     x = tf.placeholder(dtype=tf.float32, shape=(None,None,20))
@@ -174,8 +164,19 @@ def main():
     fs = np.array([np.sum(j==i) for i in range(j[-1]+1)])
     fi = [np.where(j==i)[0] for i in range(j[-1]+1)]
 
-    # generate args.num number of samples
-    for itr in range(args.start_num, args.start_num+args.num):
+    # read checkpoint file if it exists
+    f_checkpoint = f'{args.DIR}.chkp'
+    if os.path.exists(f_checkpoint):
+        with open(f_checkpoint, 'r') as f_in:
+            hals_done = f_in.readlines()
+            last_completed_hal = int(hals_done[-1]) if len(hals_done) != 0 else args.start_num - 1
+            if last_completed_hal + 1 == args.start_num + args.num:
+                print('All jobs have previously completed. There is nothing more to hallucinate.')
+    else:
+        last_completed_hal = args.start_num - 1
+
+    # generate args.num designs
+    for itr in range(last_completed_hal + 1, args.start_num+args.num):
 
         b=beta_start
         pssm = np.random.normal(0,0.1,size=(NSEQ,NRES,20))
@@ -220,7 +221,6 @@ def main():
         np.fill_diagonal(mtx,0)
 
         print("bs size: %d out of %d"%(max_clique_size, bsite_nfrag), max_cliques)
-
 
         # enumerate all possible fragment orders and
         # identify the best scoring one
@@ -283,6 +283,10 @@ def main():
             outdict['settings'] = vars(args)
             with open('%s_%d.trb'%(args.DIR,itr), 'wb') as outf:
                 pickle.dump(outdict, outf)
+
+        # record completed design numbers in the checkpoint file
+        with open(f_checkpoint, 'a+') as f_out:
+            print(itr,file=f_out)
 
         
 if __name__ == '__main__':
