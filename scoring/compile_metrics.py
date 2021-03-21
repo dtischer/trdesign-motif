@@ -144,6 +144,12 @@ def parse_all_metrics(folder):
         df = df.merge(tmp,on='name',how='outer')
         print(f'sec. struct. frac ({tmp.shape[0]}), ',end='')
 
+    fn = os.path.join(folder,'tmscores.csv')
+    if os.path.exists(fn):
+        tmp = pd.read_csv(fn,index_col=0)
+        df = df.merge(tmp,on='name',how='outer')
+        print(f'TM-scores ({tmp.shape[0]}), ',end='')
+
     print(f'final dataframe shape: {df.shape}')
     return df
 
