@@ -4,7 +4,7 @@ import tensorflow as tf
 from mrf import MRF1,MRF
 
 # a function for loading network weights
-def load_weights(DIR, params):
+def load_weights(DIR, params, n_models=3):
 
     w,b = [],[]
     beta,gamma = [],[]
@@ -45,6 +45,8 @@ def load_weights(DIR, params):
             if i==0 else
             tf.train.load_variable(mname, 'InstanceNorm_%d/gamma'%i)
             for i in range(nlaynorm)])
+
+        if len(w)==n_models: break
 
     return (w,b,beta,gamma)
 
