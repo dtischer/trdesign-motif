@@ -64,10 +64,23 @@ def main(argv):
         sys.exit('--cs_method must be either "ia" or "random"')
     if o.contigs is None and o.mask is None:
         sys.exit('Either --contigs or --mask must be provided.')
+    if o.mask is not None and o.len is not None:
+        print('Ignoring --len argument for mask mode.')
 
     # write settings file
     print(vars(o),file=open(o.out+'.set','w'))
     print(vars(o))
+ 
+    # read checkpoint file if it exists
+    f_checkpoint = f'{o.out}.chkp'
+    if os.path.exists(f_checkpoint):
+        with open(f_checkpoint, 'r') as f_in:
+            hals_done = f_in.readlines()
+            last_completed_hal = int(hals_done[-1]) if len(hals_done) != 0 else o.start_num - 1
+            if last_completed_hal + 1 == o.start_num + o.num:
+                print('All jobs have previously completed. There is nothing more to hallucinate.')
+    else:
+        last_completed_hal = o.start_num - 1
 
     # parse pdb
     print(f'extracting features from pdb: {o.pdb}')
@@ -218,17 +231,6 @@ def main(argv):
     ########################################################
     # hallucination
     ########################################################
- 
-    # read checkpoint file if it exists
-    f_checkpoint = f'{o.out}.chkp'
-    if os.path.exists(f_checkpoint):
-        with open(f_checkpoint, 'r') as f_in:
-            hals_done = f_in.readlines()
-            last_completed_hal = int(hals_done[-1]) if len(hals_done) != 0 else o.start_num - 1
-            if last_completed_hal + 1 == o.start_num + o.num:
-                print('All jobs have previously completed. There is nothing more to hallucinate.')
-    else:
-        last_completed_hal = o.start_num - 1
 
     # generate o.num designs
     for n in range(last_completed_hal + 1, o.start_num+o.num):
