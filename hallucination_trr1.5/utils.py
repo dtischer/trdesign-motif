@@ -159,7 +159,7 @@ def get_coords6d(xyz, dmax):
 
     return dist6d, omega6d, theta6d, phi6d
 
-def prep_input(pdb, chain=None):
+def prep_input(pdb, chain=None, double_asym_feat=True):
     '''Parse PDB file and return features compatible with TrRosetta'''
     ncac, seq, pdb_idx = parse_PDB_doug(pdb,["N","CA","C"], chain=chain)
 
@@ -187,10 +187,15 @@ def prep_input(pdb, chain=None):
     pb[db == 36] = 18
 
     # 1-hot encode and stack all coords together
-    feat = np.concatenate([np.eye(37)[db],
-                          np.eye(37)[ob],
-                          np.eye(37)[tb],
-                          np.eye(19)[pb]], axis=-1)
+    feat = [np.eye(37)[db],
+            np.eye(37)[ob],
+            np.eye(37)[tb],
+            np.eye(19)[pb]]
+    print(tb.shape)
+    if double_asym_feat:
+        feat.append(np.eye(37)[np.transpose(tb,[1,0])])
+        feat.append(np.eye(19)[np.transpose(pb,[1,0])])
+    feat = np.concatenate(feat, axis=-1)
 
     return {"seq":N_to_AA(seq), "feat":feat, "dist_ref":d, "pdb_idx":pdb_idx}
 

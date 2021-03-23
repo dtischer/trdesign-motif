@@ -82,7 +82,7 @@ def probe_bsite_tf(pred, pred3d, wcav, bsite, cav, beta, L, n):
 
 
 
-def probe_bsite_tf_frag(pred, bsite, idx, beta, L):
+def probe_bsite_tf_frag(pred, bsite, idx, beta, L, double_asym_feat):
     
     '''
     -------------------------------------------------------------------------
@@ -95,8 +95,11 @@ def probe_bsite_tf_frag(pred, bsite, idx, beta, L):
     '''
 
     # extend 2D arrays so that each pixel stores the full set coordinates (6D)
-    pred = tf.concat([pred,tf.transpose(pred[:,:,:,74:],[0,2,1,3])], axis=-1)
-    bsite_np = np.concatenate([bsite,np.transpose(bsite[:,:,74:],[1,0,2])], axis=-1)
+    if double_asym_feat:
+        bsite_np = bsite
+    else:
+        pred = tf.concat([pred,tf.transpose(pred[:,:,:,74:],[0,2,1,3])], axis=-1)
+        bsite_np = np.concatenate([bsite,np.transpose(bsite[:,:,74:],[1,0,2])], axis=-1)
     
     # hash function to map pairs and triples of indices to an integer
     hash_ = lambda t : hash(np.sort(t).tostring())

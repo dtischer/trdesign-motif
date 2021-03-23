@@ -126,7 +126,7 @@ def parse_all_metrics(folder):
     tmp = parse_fastdesign_filters(os.path.join(folder))
     if tmp.shape[0]>0:
         df = df.merge(tmp,on='name',how='outer')
-        print(f'fastdesign metrics ({tmp.shape[0]}), ',end='')
+        print(f'rosetta metrics from PDB file ({tmp.shape[0]}), ',end='')
 
     tmp = parse_cce(os.path.join(folder,'trr_score'))
     if tmp.shape[0]>0:

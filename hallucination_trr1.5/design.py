@@ -57,6 +57,7 @@ def main(argv):
     p.add_argument('--seq_hard', default=True, type=str2bool, help='discretize logits before forward pass')
     p.add_argument('--init_sd', type=float, default=0.01, help='std dev of noise to add at logit initiliaztion')
     p.add_argument('--n_models', type=int, default=3, help='number of trRosetta models to use')
+    p.add_argument('--double_asym_feat', default=True, type=str2bool, help='double-count theta and phi and divide all output features by 6 (Default: True; ivan script used to use False)')
     o = p.parse_args()
 
     # check for valid arguments
@@ -85,7 +86,7 @@ def main(argv):
     # parse pdb
     print(f'extracting features from pdb: {o.pdb}')
     chains = list(set(re.findall(r'[A-Z]', o.contigs if o.contigs is not None else o.mask)))
-    pdb_out = prep_input(o.pdb, chain=chains)
+    pdb_out = prep_input(o.pdb, chain=chains, double_asym_feat=o.double_asym_feat)
     pdb_feat = pdb_out['feat'][None]
     desired_feat = np.copy(pdb_feat)
     pdb_idx = pdb_out['pdb_idx']
@@ -104,7 +105,7 @@ def main(argv):
     # setup computation graph
     x = tf.placeholder(dtype=tf.float32, shape=(None,None,20))
     drop_rate = tf.placeholder(dtype=tf.float32, shape=())
-    p2d,p3d = network(tf.pad(x,[[0,0],[0,0],[0,1]]),*weights,params,drop_rate)
+    p2d,p3d = network(tf.pad(x,[[0,0],[0,0],[0,1]]),*weights,params,drop_rate,o.double_asym_feat)
     p2d = p2d[0]
     p3d = p3d[0]
 
@@ -147,6 +148,9 @@ def main(argv):
         if os.path.exists(fn):
             print(f"loading precomputed background len={L}")
             bkg_np = np.load(fn)['bkg']
+            # these were precomputed with 4 output DDoFs
+            if o.double_asym_feat:
+                bkg_np = np.concatenate([bkg_np, np.transpose(bkg_np[:,:,74:],[1,0,2])], -1)
         else:
             print(f"generating background len={L}")
             for i in range(NRUN_BKG):
@@ -162,7 +166,9 @@ def main(argv):
     #####################################################
 
     # background probabilities 
-    bkg_tf = tf.placeholder(dtype=tf.float32, shape=(None,None,130))
+    bkg_tf = tf.placeholder(dtype=tf.float32, shape=(None,None,None))
+
+    n_out_feat = 6 if o.double_asym_feat else 4
 
     if o.contigs is not None and o.cs_method == 'ia':
         # prepare binding site
@@ -190,26 +196,20 @@ def main(argv):
         # hallucination loss: KL-divergence of predicted probability 
         # distributions for dist,omega,theta,phi from background
         kl = -tf.math.reduce_sum(p2d*tf.math.log(p2d/bkg_tf),-1)
-        kl = tf.math.reduce_mean(kl)/4
-
-        # clash score
-        p3dT = tf.transpose(p3d,[0,1,3,2])
-        p3d_top2,_ = tf.nn.top_k(p3dT, k=2)
-        clash = tf.reduce_sum((p3d_top2[:,:,:-1,0]*p3d_top2[:,:,:-1,1])**2)
+        kl = tf.math.reduce_mean(kl) / n_out_feat
 
         # probe b-site
-        loss_sat,loss_consist,bsite_ij = probe_bsite_tf_frag(tf.expand_dims(p2d,axis=0),bsite,bsite_idx,beta,min_L)
-        losses = [kl,loss_sat[0],loss_consist,clash]
-        loss_labels = ['bkg','sat','consist','clash']
-        loss = o.loss_bkg*kl + o.loss_sat*loss_sat[0] + \
-               o.loss_consist*loss_consist + o.loss_clash*tf.nn.relu(clash-2.0)
+        loss_sat,loss_consist,bsite_ij = probe_bsite_tf_frag(tf.expand_dims(p2d,axis=0),bsite,bsite_idx,beta,min_L,o.double_asym_feat)
+        losses = [kl,loss_sat[0],loss_consist]
+        loss_labels = ['bkg','sat','consist']
+        loss = o.loss_bkg*kl + o.loss_sat*loss_sat[0] + o.loss_consist*loss_consist
 
     elif o.mask is not None or (o.contigs is not None and o.cs_method == 'random'):
-        pdb_feat = tf.placeholder(dtype=tf.float32, shape=(None,None,130))
-        mask_pdb = tf.reduce_sum(pdb_feat,-1) / 4  # 1 where cce loss should be applied
+        pdb_feat = tf.placeholder(dtype=tf.float32, shape=(None,None,None))
+        mask_pdb = tf.reduce_sum(pdb_feat,-1) / n_out_feat  # 1 where cce loss should be applied
         
         # cross entropy loss for fixed backbone locations
-        pdb_loss = -tf.reduce_sum(pdb_feat*tf.log(p2d+1e-8),-1) * mask_pdb / 4 
+        pdb_loss = -tf.reduce_sum(pdb_feat*tf.log(p2d+1e-8),-1) * mask_pdb / n_out_feat
         pdb_loss = tf.reduce_sum(pdb_loss,[-1,-2]) / (tf.reduce_sum(mask_pdb,[-1,-2])+1e-8)
        
         # kl loss for hallucination 
@@ -217,12 +217,21 @@ def main(argv):
         mask_bkg = 1 - mask_pdb
         mask_bkg *= (1 - tf.eye(tf.shape(mask_bkg)[1]))  # Exclude the diagonal
         
-        bkg_loss = -tf.reduce_sum(p2d * tf.log(p2d/(bkg_tf+1e-8)+1e-8),-1) * mask_bkg / 4
+        bkg_loss = -tf.reduce_sum(p2d * tf.log(p2d/(bkg_tf+1e-8)+1e-8),-1) * mask_bkg / n_out_feat
         bkg_loss = tf.reduce_sum(bkg_loss,[-1,-2])/(tf.reduce_sum(mask_bkg,[-1,-2])+1e-8)
 
         losses = [pdb_loss, bkg_loss]
         loss_labels = ['pdb','bkg']
         loss = o.loss_pdb*pdb_loss + o.loss_bkg*bkg_loss
+
+    # clash score
+    if o.loss_clash > 0:
+        p3dT = tf.transpose(p3d,[0,1,3,2])
+        p3d_top2,_ = tf.nn.top_k(p3dT, k=2)
+        clash = tf.reduce_sum((p3d_top2[:,:,:-1,0]*p3d_top2[:,:,:-1,1])**2)
+        losses.append(clash)
+        loss_labels.append('clash')
+        loss = loss + o.loss_clash*tf.nn.relu(clash-2.0)
 
     # calculate gradient of the total loss with respect to the input MSA (x)
     print('setting up computation graph')
@@ -331,10 +340,10 @@ def main(argv):
             seq = idx2aa(pssm[...,:20].argmax(-1)[0])
             print(seq)
 
+            name = f'{o.out}_{n}'
 
             if max_clique_size==bsite_nfrag:
                 scores = np.hstack([ls_,[l_,np.sum(mtx),best[0],zscore]])
-                name = "%s_%d.npz"%(o.out,n)
                 np.savez_compressed(name,
                                     dist=p2d_[:,:,:37],
                                     omega=p2d_[:,:,37:37*2],
@@ -346,17 +355,16 @@ def main(argv):
                                     p2d=bs_ij_,
                                     scores=scores)
 
-                name = "%s_%d.fas"%(o.out,n)
-                with open(name,'w') as f:
+                with open(f'{name}.fas','w') as f:
                     f.write(">%s\n%s\n"%(name,seq))
 
                 outdict = {}
-                outdict['con_ref_pdb_idx'] = np.array([('A',bsite_idx[i]) for i in best[2]])
-                outdict['con_hal_pdb_idx'] = np.array([('A',i+1) for i in best[1]])
+                outdict['con_ref_pdb_idx'] = [pdb_idx[bsite_idx[i]] for i in best[2]]
+                outdict['con_hal_pdb_idx'] = [('A',i+1) for i in best[1]]
                 outdict['loss_nodrop'] = {'bkg':losses_[0], 'sat':losses_[1], 
                                           'consist':losses_[2],'clash':losses_[3], 'pdb':best[0]}
                 outdict['settings'] = vars(o)
-                with open('%s_%d.trb'%(o.out,n), 'wb') as outf:
+                with open(f'{name}.trb', 'wb') as outf:
                     pickle.dump(outdict, outf)
 
         elif o.mask is not None or (o.contigs is not None and o.cs_method == 'random'):

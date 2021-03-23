@@ -78,7 +78,7 @@ def add_resblock(layers2d,w,b,beta,gamma,dilation,i,j):
 
 
 # ResNet
-def network(x,w,b,beta,gamma,params,drop_rate):
+def network(x,w,b,beta,gamma,params,drop_rate, double_asym_feat=True):
 
     #inputs = MRF1(x,params)
     nrow = tf.shape(x)[0]
@@ -141,7 +141,10 @@ def network(x,w,b,beta,gamma,params,drop_rate):
     po  = tf.reduce_mean(tf.stack(preds[4]),axis=0)
 
     # concatenated 2D predictions for dist,omega,theta,phi
-    p2d = tf.concat([pd,po,pt,pp],axis=-1)
+    if double_asym_feat:
+        p2d = tf.concat([pd,po,pt,pp,tf.transpose(pt,[0,2,1,3]),tf.transpose(pp,[0,2,1,3])],axis=-1)
+    else:
+        p2d = tf.concat([pd,po,pt,pp],axis=-1)
 
     # stacked predictions for 3D grids
     p3d = tf.stack(preds[2])
