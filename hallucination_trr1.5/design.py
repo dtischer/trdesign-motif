@@ -48,6 +48,7 @@ def main(argv):
     p.add_argument('--loss_consist', type=float,default=1.0, help='weight for the consistency term')
     p.add_argument('--loss_clash', type=float, default=1.0, help='weight for the clash term')
 
+    p.add_argument('--cce_cutoff',    default=19.9, type=float, help='filter cce to CB ≤ x')
     p.add_argument('--feat_drop', type=float, default=0.2, help='dropout rate for the input features')
     p.add_argument('--opt_rate', type=float, default=0.1, help='NGD minimization step size')
     p.add_argument('--opt_iter', type=int, default=300, help='number of minimization steps')
@@ -90,6 +91,12 @@ def main(argv):
     pdb_feat = pdb_out['feat'][None]
     desired_feat = np.copy(pdb_feat)
     pdb_idx = pdb_out['pdb_idx']
+
+    # CCE cutoff
+    if o.cce_cutoff is not None:
+      pdb_dist = pdb_out["dist_ref"][None]
+      mask_cce = np.logical_or(pdb_dist > o.cce_cutoff, pdb_dist < 1.0)
+      desired_feat[mask_cce] = 0
 
     ########################################################
     # setup network

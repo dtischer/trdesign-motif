@@ -396,7 +396,7 @@ def scatter_contigs(contigs, pdb_out, L_range, keep_order=False, min_gap=0):
   contigs = contigs.split(',')
   
   if not keep_order:
-    random.shuffle(contigs)
+    np.random.shuffle(contigs)
     
   #2. convert to ref_idx0
   contigs_ref_idx0 = []

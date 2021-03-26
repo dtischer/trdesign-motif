@@ -36,8 +36,10 @@ p.add_argument('data_dir', help='Folder of TrDesign outputs to process')
 p.add_argument('-t','--template', help='Template (natural binder) structure (.pdb)')
 p.add_argument('-r','--receptor', help='Receptor structure (.pdb). Should be in same coordinate ' \
                                                                              'frame as template PDB.')
-p.add_argument('--interface_res', help='Only align positions in this file (text file ' \
-                                       'with space delimited integers)')
+p.add_argument('--interface_res', help='File with space-separated integers of residue positions. '\
+                                       'Report rmsd on these residues as "interface_rmsd"')
+p.add_argument('--hbnet_res', help='File with space-separated integers of residue positions. '\
+                                   'Report rmsd on these residues as "hbnet_rmsd"')
 p.add_argument('-o','--out', help=('Prefix of output filenames.'))
 p.add_argument('--trb_dir', help='Folder containing .trb files (if not same as pdb folder)')
 p.add_argument('--pdb_suffix', default='', help='PDB files have this suffix relative to trb files')
@@ -70,20 +72,11 @@ def get_contig_idx(trk):
     return np.array(refidx,dtype=int), np.array(halidx,dtype=int)
 
 def get_rmsd(refidx, halidx, refname, halname):
-
     # get residue numbers
     stored.idx = []
     cmd.iterate(refname,'stored.idx.append(resi)')
     ref_idx_all = np.array([int(i) for i in stored.idx])
-    stored.idx = []
-    cmd.iterate(halname,'stored.idx.append(resi)')
-    hal_idx_all = np.array([int(i) for i in stored.idx])
 
-    # remove contig positions not present in halluc (due to trimming)
-    mask = np.isin(halidx,hal_idx_all)
-    halidx = halidx[mask]
-    refidx = refidx[mask]
-    
     # renumber contigs so selection residues are monotonically increasing
     contigs = idx2contigstr(refidx)
     istart = [int(x.split('-')[0]) for x in contigs]
@@ -180,11 +173,20 @@ for f in glob(os.path.join(args.data_dir,'*.pdb')):
         idx = [int(x) for line in open(args.interface_res).readlines()
                       for x in line.split()]
         mask = np.isin(refidx, idx)
-        refidx = refidx[mask]
-        halidx = halidx[mask]
-        rms, nclashes = get_rmsd(refidx, halidx, ref_prefix, row['name'])
+        refidx_int = refidx[mask]
+        halidx_int = halidx[mask]
+        rms, nclashes = get_rmsd(refidx_int, halidx_int, ref_prefix, row['name'])
         row['interface_rmsd'] = rms
         row['rec_clashes_interface'] = nclashes
+
+    if args.hbnet_res is not None:
+        idx = [int(x) for line in open(args.hbnet_res).readlines()
+                      for x in line.split()]
+        mask = np.isin(refidx, idx)
+        refidx_hb = refidx[mask]
+        halidx_hb = halidx[mask]
+        rms, nclashes = get_rmsd(refidx_hb, halidx_hb, ref_prefix, row['name'])
+        row['hbnet_rmsd'] = rms
 
     row['rog'] = calc_rog(row['name'])
 

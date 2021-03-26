@@ -29,8 +29,9 @@ def parse_fastdesign_filters(folder):
         with open(f) as inf:
             for line in inf:
                 if recording and len(line)>1:
-                    k,v = line.split()
-                    row[k] = float(v)
+                    tokens = line.split()
+                    if len(tokens) == 2:
+                        row[tokens[0]] = float(tokens[1])
                 if '#END_POSE_ENERGIES_TABLE' in line: 
                     recording=True
                 if line.startswith('pose'):
