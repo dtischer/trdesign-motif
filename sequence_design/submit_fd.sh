@@ -11,5 +11,6 @@
 source activate pyrosetta
 
 sbatch -a 1-$(cat $1 | wc -l) -J fastdes -c 1 --mem=10g \
+       -o /dev/null -e /dev/null \
        --wrap="eval \`sed -n \${SLURM_ARRAY_TASK_ID}p $1\`"
 

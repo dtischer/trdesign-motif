@@ -4,7 +4,7 @@ warnings.filterwarnings('ignore',category=FutureWarning)
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-import sys
+import sys, os
 import json
 import numpy as np
 from scipy import stats
@@ -68,6 +68,10 @@ def main(argv):
         sys.exit('Either --contigs or --mask must be provided.')
     if o.mask is not None and o.len is not None:
         print('Ignoring --len argument for mask mode.')
+
+    # convert paths to absolute paths
+    o.pdb = os.path.abspath(o.pdb)
+    o.out = os.path.abspath(o.out)
 
     # write settings file
     print(vars(o),file=open(o.out+'.set','w'))
