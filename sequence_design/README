@@ -1,0 +1,25 @@
+Scripts for sequence design
+===========================
+
+Jue's pipeline
+--------------
+To generate .pdb files from hallucinations:
+
+    ./fold.sh FOLDER
+
+where FOLDER contains .npz files output by hallucination/design.py. If using
+hallucination_trr1.5/design.py, use:
+
+    ./fold.sh -r FOLDER
+
+To do Fastdesign,
+
+    ./make_fd_list.sh FOLDER TEMPLATE.pdb RECEPTOR.pdb INTERFACE_RES.txt > fd.list
+    ./submit_fd.sh fd.list
+
+where FOLDER contains .pdb files (from hallucination) to design, TEMPLATE.pdb
+is the pdb of the natural binder you are mimicking, RECEPTOR.pdb is the
+receptor (in the same coordinates as the template) to design in the context of,
+and INTERFACE_RES.txt is a space-delimited list of numbers of residues you want
+to place Ca coordinate restraints and force native AA identity on.
+
