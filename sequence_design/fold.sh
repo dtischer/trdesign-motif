@@ -27,7 +27,7 @@ for NPZ in $1/*.npz; do
   f=`basename $NPZ .npz`
   FASTA=`dirname $NPZ`/$f.fas
   if [ ! -f $outdir/$f.pdb ]; then
-    echo "$DIR/trFolding/RosettaTR.py $roll -m 0 -pd 0.15 $NPZ $FASTA $outdir/$f.pdb"
+    echo "$DIR/trFolding2/RosettaTR.py $roll -m 0 -pd 0.15 $NPZ $FASTA $outdir/$f.pdb"
   fi
 done > $task_file
 
