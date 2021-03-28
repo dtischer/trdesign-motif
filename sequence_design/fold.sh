@@ -32,5 +32,5 @@ for NPZ in $1/*.npz; do
 done > $task_file
 
 sbatch -a 1-$(cat $task_file | wc -l) -J fold.`basename $1` -c 1 --mem=10g \
-       --wrap="eval \`sed -n \${SLURM_ARRAY_TASK_ID}p $task_file\`"
        -o /dev/null -e /dev/null 
+       --wrap="eval \`sed -n \${SLURM_ARRAY_TASK_ID}p $task_file\`"
