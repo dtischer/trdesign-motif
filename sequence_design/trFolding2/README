@@ -1,0 +1,9 @@
+PyRosetta script to generate PDBs from hallucinated 6D transforms
+
+copied from /projects/casp/CASP14/server_pipe/folding/ on 20210328
+
+supports --roll option, which is used with Jue's fold.sh script.
+
+not sure if this script is newer or older than the one in trFolding, but the
+two are pretty different so leaving them separate for now.
+
