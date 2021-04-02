@@ -28,6 +28,17 @@ import design_utils
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 script_dir = os.path.dirname(os.path.realpath(__file__))
 
+def get_xyz(p, atom_id='CA'):
+  '''
+  Get the cartesian coordinates of an atom type for every residue
+  in the pose. Atom ids only make sense if they are in the backbone.
+  '''
+  xyz = [p.residue(i).atom(atom_id).xyz() for i in range(1, p.size()+1)]
+  xyz = np.stack(xyz, axis=0)
+  
+  return xyz
+
+
 def main():
     t0 = time.time()
 
@@ -71,10 +82,6 @@ def main():
     elif args.pssm_mode == 'trR':
       min_aa_probability, sequnce_profile_weight = -0.5, 0.3
     
-    #init(f'-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -{args.sfxn} -corrections::beta_nov16 -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
-
-    #init(f'-holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -indexed_structure_store:fragment_store /home/lisanza/DB/hdf5/ss_grouped_vall_all.h5')
-    
     # load hal meta data
     with open(args.trb_file, 'rb') as infile:
         trb = pickle.load(infile)
@@ -112,6 +119,7 @@ def main():
       sys.exit(err)
         
     # init pyR
+    #init(f'@{flag_file} -holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -constant_seed')
     init(f'@{flag_file} -holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc')
     
     # Design basename
@@ -186,7 +194,7 @@ def main():
     ###############################################################################
     # Protocol
     ###############################################################################
-    def mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, layer_design, pssm_f_updated, hbnet_resnums_str):
+    def mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, layer_design, pssm_f_updated, hbnet_resnums_str, cart=False):
       pack_protocol = f"""
       <ROSETTASCRIPTS>
         <SCOREFXNS>
@@ -194,9 +202,15 @@ def main():
                   <Reweight scoretype="atom_pair_constraint" weight="3"/>
                   <Reweight scoretype="dihedral_constraint" weight="1"/>
                   <Reweight scoretype="angle_constraint" weight="1"/>
+                  <Reweight scoretype="coordinate_constraint" weight="1"/>
+                  
+                  {'<Reweight scoretype="cart_bonded" weight="0.5"/>' if cart else ''}
+                  {'<Reweight scoretype="pro_close" weight="0.0"/>' if cart else ''}
               </ScoreFunction>
 
               <ScoreFunction name="sfxn_pure" weights="{weight_file}">
+                  {'<Reweight scoretype="cart_bonded" weight="0.5"/>' if cart else ''}
+                  {'<Reweight scoretype="pro_close" weight="0.0"/>' if cart else ''}
               </ScoreFunction>
 
               <ScoreFunction name="SFXN3" weights="{weight_file}">  
@@ -214,6 +228,8 @@ def main():
                   <Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-2.5" />
                   <Set approximate_buried_unsat_penalty_hbond_bonus_ser_to_helix_bb="0.0" />
                   
+                  {'<Reweight scoretype="cart_bonded" weight="0.5"/>' if cart else ''}
+                  {'<Reweight scoretype="pro_close" weight="0.0"/>' if cart else ''}                  
                   
               </ScoreFunction>
         </SCOREFXNS>
@@ -377,23 +393,23 @@ def main():
 
           <SwitchResidueTypeSetMover name="to_fullatom" set="fa_standard"/>
 
-          <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="init,ex1_ex2aro,ic">
+          <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="init,ex1_ex2aro,ic" cartesian="{str(cart).lower()}">
               <MoveMap name="MM">                
                   <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
                   <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
                   <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
-                  <Jump number="1" setting="false" />
+                  <Jump number="1" setting="true" />
               </MoveMap>
           </FastRelax>
 
           <ClearConstraintsMover name="rm_csts" />
 
-          <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2" task_operations="init,ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB{",strand_surface_aa,strand_boundary_aa,strand_core_aa,design_loops_surface,design_loops_boundary,design_loops_core,design_edges_core,ld1,ld2,ld5,ld6,ld9,ld10,ld13" if layer_design else ""}" batch="false" ramp_down_constraints="false" cartesian="False" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
+          <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2"  task_operations="init,ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB{",strand_surface_aa,strand_boundary_aa,strand_core_aa,design_loops_surface,design_loops_boundary,design_loops_core,design_edges_core,ld1,ld2,ld5,ld6,ld9,ld10,ld13" if layer_design else ""}" batch="false" ramp_down_constraints="false" cartesian="{str(cart).lower()}" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
               <MoveMap name="MM">                
                   <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
                   <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
                   <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
-                  <Jump number="1" setting="false" />
+                  <Jump number="1" setting="true" />
               </MoveMap>
           </FastDesign>
 
@@ -566,7 +582,7 @@ def main():
 
     # 2. Force aa at specified positions along the contig
     for pdb_idx_nat in args.freeze_native_residues:
-        # Check frozen residue is in the contig. Sometimes we overspecify the frozen residues
+        # Check frozen residue is in the contig. Sometimes we accidently overspecify the frozen residues
         if (args.frozen_chain, pdb_idx_nat) not in nat2hal_pdb_idx:
             print(f'The frozen residue {args.frozen_chain, pdb_idx_nat} is not in the contig. This may or may not be a problem. Just FYI.')
             continue
@@ -587,22 +603,36 @@ def main():
         
         # clean the pssm at the pose_idx
         pssm[pose_idx_hal - 1] = 0
-        
-        # MAY CONSIDER ADDING PAIRWISE RESTRAINTS IN THE FUTURE
+            
+        # MAY CONSIDER ADDING PAIRWISE CONSTRAINTS FROM HALLUCINATION IN THE FUTURE
         
     # save the modified pssm
     design_utils.save_pssm(pssm, pssm_f_updated)
 
-    # 3. align the p_hal to p_nat by all contig CA
+    # 3. Align p_hal to p_nat by frozen residue bb atoms
     align_map = pyrosetta.rosetta.std.map_core_id_AtomID_core_id_AtomID()
-    for pdb_idx_nat, pdb_idx_hal in zip(trb['con_ref_pdb_idx'], trb['con_hal_pdb_idx']):
-        pose_idx_nat = p_nat.pdb_info().pdb2pose(*pdb_idx_nat)
-        pose_idx_hal = p_hal.pdb_info().pdb2pose(*pdb_idx_hal)
-        atom_id_nat = pyrosetta.rosetta.core.id.AtomID(p_nat.residue(pose_idx_nat).atom_index("CA"), pose_idx_nat)
-        atom_id_hal = pyrosetta.rosetta.core.id.AtomID(p_hal.residue(pose_idx_hal).atom_index("CA"), pose_idx_hal)
-        align_map[atom_id_hal] = atom_id_nat
-    rmsd = pyrosetta.rosetta.core.scoring.superimpose_pose(p_hal, p_nat, align_map)
+    for pdb_idx_nat in args.freeze_native_residues:
+        # Check frozen residue is in the contig. Sometimes we accidently overspecify the frozen residues
+        if (args.frozen_chain, pdb_idx_nat) not in nat2hal_pdb_idx:
+            print(f'The frozen residue {args.frozen_chain, pdb_idx_nat} is not in the contig. This may or may not be a problem. Just FYI.')
+            continue
+
+        # Find equivalent residues in both structures
+        pose_idx_nat = p_nat.pdb_info().pdb2pose(args.frozen_chain, pdb_idx_nat)
+        pose_idx_hal = p_hal.pdb_info().pdb2pose(*nat2hal_pdb_idx[(args.frozen_chain, pdb_idx_nat)])
       
+        for atom in ["N", "CA", "C"]:
+            res_hal = p_hal.residue(pose_idx_hal)
+            res_nat = p_nat.residue(pose_idx_nat)
+            atom_index = res_hal.atom_index(atom)  # this is the same number for either residue
+          
+            # Add frozen bb atoms to alignment map
+            atom_id_nat = pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_nat)
+            atom_id_hal = pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_hal)
+            align_map[atom_id_hal] = atom_id_nat
+            
+    rmsd = pyrosetta.rosetta.core.scoring.superimpose_pose(p_hal, p_nat, align_map)
+
     # 4. Append p_tar to p_hal and clean up the fold tree
     # concatenate hal ptn to the target
     p_hal.append_pose_by_jump(p_tar, 1 )
@@ -624,19 +654,91 @@ def main():
     print(p_hal_tar.pdb_info())
     print(p_hal_tar.fold_tree())
     
+    
+    # 5. Constrain p_hal to stay in place. Must be done after the two poses are combined
+    for pdb_idx_nat in args.freeze_native_residues:
+        # Check frozen residue is in the contig. Sometimes we accidently overspecify the frozen residues
+        if (args.frozen_chain, pdb_idx_nat) not in nat2hal_pdb_idx:
+            print(f'The frozen residue {args.frozen_chain, pdb_idx_nat} is not in the contig. This may or may not be a problem. Just FYI.')
+            continue
+            
+        # Find equivalent residues in both structures 
+        # (p_hal is still chain A in p_hal_tar, with the original pdb indexing, so this mapping still works)
+        pose_idx_nat = p_nat.pdb_info().pdb2pose(args.frozen_chain, pdb_idx_nat)
+        pose_idx_hal_tar = p_hal_tar.pdb_info().pdb2pose(*nat2hal_pdb_idx[(args.frozen_chain, pdb_idx_nat)])
+        
+        # Add coordinate constraints to frozen bb atoms to keep them in place once aligned
+        for atom in ["N", "CA", "C"]:
+            res_hal_tar = p_hal_tar.residue(pose_idx_hal_tar)
+            res_nat = p_nat.residue(pose_idx_nat)
+            atom_index = res_hal_tar.atom_index(atom)  # this is the same number for either residue
+            tolerance = 0.05  # originally 0.3
+            func = pyrosetta.rosetta.core.scoring.func.HarmonicFunc(1, tolerance)
+            cst = pyrosetta.rosetta.core.scoring.constraints.CoordinateConstraint(
+                pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_hal_tar),  # atom you want to keep in place
+                pyrosetta.rosetta.core.id.AtomID(1, p_hal_tar.size()),  # use root of the fold tree as the "virtual atom"
+                res_nat.xyz(atom_index),  # xyz coordinates to keep Atom1 at
+                func
+            )
+            p_hal_tar.add_constraint(cst)
+    
+    p_hal_tar.dump_pdb(f'{out_dir}/fast_designs/complex/{bn_des}_pre_fd.pdb')
+    
     print("Constraints after all mutations and adding target")
     print(p_hal_tar.constraint_set())
+    
+    # Double check that the coordinate constrants are being scored
+    '''
+    sfxn = get_fa_scorefxn()
+    cc = pyrosetta.rosetta.core.scoring.ScoreType.coordinate_constraint
+    sfxn.set_weight(cc, 1.0)
+    apc = pyrosetta.rosetta.core.scoring.ScoreType.atom_pair_constraint
+    sfxn.set_weight(apc, 1.0)
+    
+    sfxn.show(p_hal_tar)
+    exit()
+    '''
+    
     ############################################################################################
     # Run design
     ###########################################################################################
     hbnet_resnums_str = ','.join([str(x) for x in hbnet_resnums])
     
-    xml_rd1 = mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, args.layer_design, pssm_f_updated, hbnet_resnums_str)  # just a string replacement operation
+    xml_rd1 = mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, args.layer_design, pssm_f_updated, hbnet_resnums_str, cart=True)  # just a string replacement operation
     task_relax = rosetta_scripts.SingleoutputRosettaScriptsTask(xml_rd1)
     task_relax.setup() # syntax check
-    print("Running protocol")
-    packed_pose = task_relax(p_hal_tar)
-    p_packed = packed_pose.pose
+    
+    # Run fd X number of times until a designs moves < 1.2 A from the initial position
+    pre_fd_xyz = get_xyz(p_hal_tar.split_by_chain()[1], atom_id='CA')
+    n_attempts = 1
+    poses_rmsd = []
+    poses_designed = []
+    
+    for i in range(1, n_attempts+1):
+      print(f"Running protocol. Attempt #{i}")
+      packed_pose = task_relax(p_hal_tar)
+      p_packed = packed_pose.pose
+      poses_designed.append(p_packed)
+
+      post_fd_xyz = get_xyz(p_packed.split_by_chain()[1], atom_id='CA')
+      diff_xyz = pre_fd_xyz - post_fd_xyz
+      rmsd_from_init = np.sqrt((diff_xyz**2).sum(1).mean())
+      rmsd_from_init = 7.
+      poses_rmsd.append(rmsd_from_init)
+      print(f"Design rmsd_from_init: {rmsd_from_init}")
+      
+      if rmsd_from_init < 1.2:
+        print(f"Made a design with rmsd_from_init < 1.2A!")
+        print(f"rmsd for all design attempts: {poses_rmsd}")
+        break
+        
+      if (rmsd_from_init > 1.2) & (i==n_attempts):
+        print(f"Failed to find a design with rmsd_from_init < 1.2A with \
+              {n_attempts} attempts. Outputting the pose with the smallest rmsd_from_init")
+        print(f"rmsd for all design attempts: {poses_rmsd}")
+        poses_rmsd = np.array(poses_rmsd)
+        p_packed = poses_designed[poses_rmsd.argmin()]
+
     t1 = time.time()
     print("Design took ", t1-t0)
 

@@ -49,11 +49,13 @@ def main(argv):
   ex: '10-15:5'   replace pos. 10-15 with fixed-loop of length 5
   ex: '10-15'     remove pdb cst. from positions 10 to 15
   ex: '10'        remove pdb cst. from position 10''')
-  p.add_argument('--mask_v2', '-m2',    default=None, type=str, help='''set linker lengths between fragments of a refernce pdb
+  p.add_argument('--mask_v2', '-m2',    default=None, type=str, help='''set gap lengths between contigs of a refernce pdb
   use '<ch>start-end, min_insertion-max_insertion, <ch>start-end, min_insertion-max_insertion ...'
   ex: 'A12-24,2-5,A36-42,20-50,B6-11'
   You can reorder the contigs from the pdb too!
   ex: 'B6-11,9-21,A36-42,20-30,A12-24'
+  Gaps and contigs can be in any sequence, though it only makes sense to alternate them
+  ex: '10-20,B6-11,9-21,A36-42,20-30,A12-24,22-33'
   ''')
   p.add_argument('--min_gap',       default=0,    type=int, help='Minimum gap length with randomly placing contigs')
   p.add_argument('--stat_place',    default=False, type=str2bool, help='Contigs are randomly placed (preserving order) but do not move')

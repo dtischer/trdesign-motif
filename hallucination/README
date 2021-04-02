@@ -41,6 +41,7 @@ Notes:
 The --len arugment must be a single integer. This method does not support making variable length proteins.
 Contig placement is not guaranteed to be the same order as in --contigs
 
+
 #############################################
 Method 3: Sample gaps lengths between contigs
 #############################################
