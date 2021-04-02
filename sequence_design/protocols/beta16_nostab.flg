@@ -1,0 +1,8 @@
+# flags from: /home/norn/NTF2/210224_multiple_ligands_req_hbonds/scripts/design_ligand.py, ~ line 83
+-nstruct 1
+-ex1
+-ex2
+-run:preserve_header
+-beta_nov16
+-corrections::beta_nov16
+-overwrite
