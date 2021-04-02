@@ -672,8 +672,8 @@ def main():
             res_hal_tar = p_hal_tar.residue(pose_idx_hal_tar)
             res_nat = p_nat.residue(pose_idx_nat)
             atom_index = res_hal_tar.atom_index(atom)  # this is the same number for either residue
-            tolerance = 0.05  # originally 0.3
-            func = pyrosetta.rosetta.core.scoring.func.HarmonicFunc(1, tolerance)
+            tolerance = 0.3  # originally 0.3
+            func = pyrosetta.rosetta.core.scoring.func.HarmonicFunc(0, tolerance)
             cst = pyrosetta.rosetta.core.scoring.constraints.CoordinateConstraint(
                 pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_hal_tar),  # atom you want to keep in place
                 pyrosetta.rosetta.core.id.AtomID(1, p_hal_tar.size()),  # use root of the fold tree as the "virtual atom"
