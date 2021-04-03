@@ -124,6 +124,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument('--pdb', nargs='+', required=True, help='pdb or space separated list of pdbs to trim')
   parser.add_argument('--trb_dir', help='dir to find the corresponding trb file if different than the pdb\'s dir')
+  parser.add_argument('--out_dir', help='dir to dump outputs')
   parser.add_argument('--suffix', help='suffix to add to dumped pdb', default='_trimmed')
   args = parser.parse_args() 
   
@@ -144,4 +145,7 @@ if __name__ == "__main__":
     # Trim the tails
     pose = pose_from_file(pdb_path)
     pose = trim_tails(pose, trb_path)
-    pose.dump_pdb(pdb_path.replace('.pdb', f'{args.suffix}.pdb'))
+    out = pdb_path.replace('.pdb', f'{args.suffix}.pdb')
+    if args.out_dir is not None:
+        out = os.path.join(args.out_dir, os.path.basename(out))
+    pose.dump_pdb(out)
