@@ -49,16 +49,16 @@ def main(argv):
     p.add_argument('--loss_clash', type=float, default=1.0, help='weight for the clash term')
 
     p.add_argument('--cce_cutoff',    default=19.9, type=float, help='filter cce to CB ≤ x')
-    p.add_argument('--feat_drop', type=float, default=0.2, help='dropout rate for the input features')
+    p.add_argument('--feat_drop', type=float, default=0, help='dropout rate for the input features')
     p.add_argument('--opt_rate', type=float, default=0.1, help='NGD minimization step size')
-    p.add_argument('--opt_iter', type=int, default=300, help='number of minimization steps')
+    p.add_argument('--opt_iter', type=int, default=200, help='number of minimization steps')
     p.add_argument('--beta0', type=float, dest='b0', default=2.0, help='inverse temperature at the beginning of the minimization')
     p.add_argument('--beta1', type=float, dest='b1', default=20.0, help='inverse temperature at the end of the minimization')
     p.add_argument('--sample', default=True, type=str2bool, help='perform NGD+sample')
     p.add_argument('--seq_hard', default=True, type=str2bool, help='discretize logits before forward pass')
-    p.add_argument('--init_sd', type=float, default=0.01, help='std dev of noise to add at logit initiliaztion')
+    p.add_argument('--init_sd', type=float, default=0.1, help='std dev of noise to add at logit initiliaztion')
     p.add_argument('--n_models', type=int, default=3, help='number of trRosetta models to use')
-    p.add_argument('--double_asym_feat', default=True, type=str2bool, help='double-count theta and phi and divide all output features by 6 (Default: True; ivan script used to use False)')
+    p.add_argument('--double_asym_feat', default=False, type=str2bool, help='double-count theta and phi and divide all output features by 6 (Default: False)')
     o = p.parse_args()
 
     # check for valid arguments
@@ -343,17 +343,20 @@ def main(argv):
                     trials.append((s,a,b,p))
 
             trials.sort(key=lambda x: x[0])
-            best=trials[0]
-            zscore = stats.zscore([t[0] for t in trials])[0]
-            print("best: score= %.5f   zscore= %.5f   trials= %d   order="%(best[0],zscore,len(trials)), best[3])
-            sys.stdout.flush()
 
-            seq = idx2aa(pssm[...,:20].argmax(-1)[0])
-            print(seq)
+            if (len(trials) ==0) or (max_clique_size != bsite_nfrag):
+                print('No motif placements could be found :(')
+            else:
+                best=trials[0]
+                zscore = stats.zscore([t[0] for t in trials])[0]
+                print("best: score= %.5f   zscore= %.5f   trials= %d   order="%(best[0],zscore,len(trials)), best[3])
+                sys.stdout.flush()
 
-            name = f'{o.out}_{n}'
+                seq = idx2aa(pssm[...,:20].argmax(-1)[0])
+                print(seq)
 
-            if max_clique_size==bsite_nfrag:
+                name = f'{o.out}_{n}'
+
                 scores = np.hstack([ls_,[l_,np.sum(mtx),best[0],zscore]])
                 np.savez_compressed(name,
                                     dist=p2d_[:,:,:37],
