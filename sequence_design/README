@@ -1,6 +1,8 @@
+===========================
 Scripts for sequence design
 ===========================
 
+--------------
 Jue's pipeline
 --------------
 To generate .pdb files from hallucinations:

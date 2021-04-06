@@ -20,14 +20,14 @@ for PDB in $1/*.pdb; do
     ID=`basename $PDB .pdb`
     TRB=`dirname $PDB`/$ID.trb
     cmd=""
-    rm $ID.fd.log # overwrite previous logs
     if [ ! -f $1/trimmed/$ID.pdb ]; then
-        cmd="$DIR/trim_tails.py --pdb $PDB --suffix='' &>>$ID.fd.log; "
+        cmd="$DIR/trim_tails.py --pdb $PDB --suffix='' --out_dir $1/trimmed &>>$ID.fd.log; "
     fi
+    TRIMMED=$1/trimmed/`basename $PDB`
     if [ ! -f pssm/${ID}_0001.profile.pssm ]; then
-        cmd+="$DIR/pssm/mk_pssm.sh $PDB &>>$ID.fd.log; "
+        cmd+="$DIR/pssm/mk_pssm.sh $TRIMMED &>>$ID.fd.log; "
     fi
-    cmd+="$DIR/structure2design.py --pdb_in $PDB --trb_file $TRB --native $2 --tar $3 --freeze_native_residues `cat $4` --pssm_file=pssm/${ID}_0001.profile.pssm --pssm_mode=norn1 --layer_design=True &>> $ID.fd.log"
+    cmd+="$DIR/structure2design.py --pdb_in $TRIMMED --trb_file $TRB --out_dir $1 --native $2 --tar $3 --freeze_native_residues `cat $4` --pssm_file=pssm/${ID}_0001.profile.pssm --pssm_mode=norn1 --layer_design=True &>> $ID.fd.log"
     echo $cmd
 done  
 
