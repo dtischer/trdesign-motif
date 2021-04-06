@@ -463,7 +463,9 @@ def main():
         native_seq = row['seq']
         cst_idxes1 = row['hal_idxes']
         for resi1, aa in zip(cst_idxes1, native_seq):
-            if aa == 'bb':
+            if (aa == 'bb') and (p_hal.residue(resi1).name() == 'PRO'):  # PRO can't accept bb hbonds
+                aa = 'A'
+            elif (aa == 'bb') and (p_hal.residue(resi1).name() != 'PRO'):
                 continue
             resn = design_utils.aa123[aa]
             mutator = rosetta.protocols.simple_moves.MutateResidue(resi1, resn)
@@ -693,7 +695,7 @@ def main():
     ###########################################################################################
     hbnet_resnums_str = ','.join([str(x) for x in hbnet_resnums])
     
-    xml_rd1 = mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, args.layer_design, pssm_f_updated, hbnet_resnums_str, cart=False)  # just a string replacement operation
+    xml_rd1 = mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, args.layer_design, pssm_f_updated, hbnet_resnums_str, cart=True)  # just a string replacement operation
     task_relax = rosetta_scripts.SingleoutputRosettaScriptsTask(xml_rd1)
     task_relax.setup() # syntax check
     
