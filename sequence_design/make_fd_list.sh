@@ -12,24 +12,31 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )" # folder of this script
 
-mkdir -p out
-mkdir -p pssm
+mkdir -p $1/out
+mkdir -p $1/pssm
 mkdir -p $1/trimmed
 mkdir -p $1/log
 
+# absolute paths
+ABS1=`readlink -f $1` 
+ABS2=`readlink -f $2` 
+ABS3=`readlink -f $3` 
+ABS4=`readlink -f $4` 
+
 for PDB in $1/*.pdb; do
     ID=`basename $PDB .pdb`
-    TRB=`dirname $PDB`/$ID.trb
-    logfile=$1/log/$ID.fd.log
-    cmd=""
-    if [ ! -f $1/trimmed/$ID.pdb ]; then
-        cmd="$DIR/trim_tails.py --pdb $PDB --suffix='' --out_dir $1/trimmed &>> $logfile; "
+    TRB=$ID.trb
+    logfile=log/$ID.fd.log
+
+    cmd="cd $ABS1; "
+    if [ ! -f trimmed/$ID.pdb ]; then
+        cmd+="$DIR/trim_tails.py --pdb `basename $PDB` --suffix='' --out_dir trimmed/ &>> $logfile; "
     fi
-    TRIMMED=$1/trimmed/`basename $PDB`
+    TRIMMED=trimmed/`basename $PDB`
     if [ ! -f pssm/${ID}_0001.profile.pssm ]; then
         cmd+="$DIR/pssm/mk_pssm.sh $TRIMMED &>> $logfile; "
     fi
-    cmd+="$DIR/structure2design.py --pdb_in $TRIMMED --trb_file $TRB --out_dir $1 --native $2 --tar $3 --freeze_native_residues `cat $4` --pssm_file=pssm/${ID}_0001.profile.pssm --pssm_mode=norn1 --layer_design=True &>> $logfile"
+    cmd+="$DIR/structure2design.py --pdb_in $TRIMMED --trb_file $TRB --out_dir ./ --native $ABS2 --tar $ABS3 --freeze_native_residues `cat $ABS4` --pssm_file=pssm/${ID}_0001.profile.pssm --pssm_mode=norn1 --layer_design=True &>> $logfile"
     echo $cmd
 done  
 
