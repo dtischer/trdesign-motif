@@ -50,8 +50,6 @@ def main():
     # Pose
     parser.add_argument('--pdb_in', type=str, help='Path to input pdb file')
     parser.add_argument('--out_dir', type=str, help='Path to output directory (if different that the pdb dir)')
-    
-    # Restraints
     parser.add_argument('--trb_file', type=str, help='tracker file for min loss step of hallucination')
     parser.add_argument('--pssm_file', type=str, help='path to pssm file')
     
@@ -198,16 +196,6 @@ def main():
       pack_protocol = f"""
       <ROSETTASCRIPTS>
         <SCOREFXNS>
-              <ScoreFunction name="fa_csts" weights="{weight_file}">  # add "weights" or else this sxfn will JUST have these 3 terms
-                  <Reweight scoretype="atom_pair_constraint" weight="3"/>
-                  <Reweight scoretype="dihedral_constraint" weight="1"/>
-                  <Reweight scoretype="angle_constraint" weight="1"/>
-                  <Reweight scoretype="coordinate_constraint" weight="1"/>
-                  
-                  {'<Reweight scoretype="cart_bonded" weight="0.5"/>' if cart else ''}
-                  {'<Reweight scoretype="pro_close" weight="0.0"/>' if cart else ''}
-              </ScoreFunction>
-
               <ScoreFunction name="sfxn_pure" weights="{weight_file}">
                   {'<Reweight scoretype="cart_bonded" weight="0.5"/>' if cart else ''}
                   {'<Reweight scoretype="pro_close" weight="0.0"/>' if cart else ''}
@@ -217,9 +205,10 @@ def main():
                   <Reweight scoretype="res_type_constraint" weight="{sequnce_profile_weight}"/>  # experiment with this value original designs from 3_25_20 were 0.3
                   <Reweight scoretype="hbond_lr_bb" weight="2"/>            #primarily affects beta sheets
                   <Reweight scoretype="hbond_sr_bb" weight="1.5"/>      # primarily affect alpha helix
-                  <Reweight scoretype="atom_pair_constraint" weight="1.0" />
                   <Reweight scoretype="aa_composition" weight="1.0" />                                                       # composition constraint mover
                   Reweight scoretype="omega" weight="5"/>                           # penalty on omega bb angle. check if omega distribution is near wt or not. if not, add in
+                  <Reweight scoretype="atom_pair_constraint" weight="1.0" />
+                  <Reweight scoretype="coordinate_constraint" weight="1.0"/>
                   
                   <Reweight scoretype="approximate_buried_unsat_penalty" weight="5.0" />  # ask bcov what is current state of the art
                   <Set approximate_buried_unsat_penalty_assume_const_backbone="true" />
@@ -672,7 +661,7 @@ def main():
             res_hal_tar = p_hal_tar.residue(pose_idx_hal_tar)
             res_nat = p_nat.residue(pose_idx_nat)
             atom_index = res_hal_tar.atom_index(atom)  # this is the same number for either residue
-            tolerance = 0.3  # originally 0.3
+            tolerance = 0.05  # originally 0.3
             func = pyrosetta.rosetta.core.scoring.func.HarmonicFunc(0, tolerance)
             cst = pyrosetta.rosetta.core.scoring.constraints.CoordinateConstraint(
                 pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_hal_tar),  # atom you want to keep in place
@@ -704,7 +693,7 @@ def main():
     ###########################################################################################
     hbnet_resnums_str = ','.join([str(x) for x in hbnet_resnums])
     
-    xml_rd1 = mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, args.layer_design, pssm_f_updated, hbnet_resnums_str, cart=True)  # just a string replacement operation
+    xml_rd1 = mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, args.layer_design, pssm_f_updated, hbnet_resnums_str, cart=False)  # just a string replacement operation
     task_relax = rosetta_scripts.SingleoutputRosettaScriptsTask(xml_rd1)
     task_relax.setup() # syntax check
     
@@ -715,15 +704,30 @@ def main():
     poses_designed = []
     
     for i in range(1, n_attempts+1):
+      # check constraint satisfaction before des
+      sfxn_cnst = ScoreFunction() 
+      cc = pyrosetta.rosetta.core.scoring.ScoreType.coordinate_constraint
+      sfxn_cnst.set_weight(cc, 1.0)
+      apc = pyrosetta.rosetta.core.scoring.ScoreType.atom_pair_constraint
+      sfxn_cnst.set_weight(apc, 1.0)
+      print('Constraint energies before fd')
+      clone = p_hal_tar.clone()
+      sfxn_cnst(clone)
+      print(clone.energies())
+      
       print(f"Running protocol. Attempt #{i}")
       packed_pose = task_relax(p_hal_tar)
       p_packed = packed_pose.pose
       poses_designed.append(p_packed)
+      
+      print('Constraint energies after fd')
+      clone = p_packed.clone()
+      sfxn_cnst(clone)
+      print(clone.energies())
 
       post_fd_xyz = get_xyz(p_packed.split_by_chain()[1], atom_id='CA')
       diff_xyz = pre_fd_xyz - post_fd_xyz
       rmsd_from_init = np.sqrt((diff_xyz**2).sum(1).mean())
-      rmsd_from_init = 7.
       poses_rmsd.append(rmsd_from_init)
       print(f"Design rmsd_from_init: {rmsd_from_init}")
       
