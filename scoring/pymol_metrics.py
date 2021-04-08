@@ -146,8 +146,8 @@ for f in glob(os.path.join(args.data_dir,'*.pdb')):
 
     trbname = os.path.join(trb_dir, os.path.basename(f.replace(args.pdb_suffix+'.pdb','.trb')))
     if not exists(trbname): 
-        print('{trbname} does not exist, skipping')
-        continue
+        sys.exit(f'ERROR: {trbname} does not exist. Set the --trb_dir argument if your .trb files '\
+                  'are in a different folder from the .pdb files.')
     trk = np.load(trbname,allow_pickle=True)
 
     if 'loss_nodrop' in trk:
