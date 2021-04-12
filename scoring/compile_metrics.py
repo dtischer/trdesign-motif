@@ -10,6 +10,7 @@
 import pandas as pd
 import numpy as np
 import os, glob, argparse
+from collections import OrderedDict
 
 p = argparse.ArgumentParser()
 p.add_argument('folder', help='Folder of outputs to process')
@@ -21,10 +22,10 @@ if args.out is None:
 
 def parse_fastdesign_filters(folder):
     files = glob.glob(os.path.join(folder,'*.pdb'))
-    df = pd.DataFrame()
+    records = []
     for f in files:
-        row = pd.DataFrame()
-        row['name'] = [os.path.basename(f)[:-4]]
+        row = OrderedDict()
+        row['name'] = os.path.basename(f)[:-4]
         recording = False
         with open(f) as inf:
             for line in inf:
@@ -36,14 +37,15 @@ def parse_fastdesign_filters(folder):
                     recording=True
                 if line.startswith('pose'):
                     row['rosetta_energy'] = float(line.split()[-1])
-        df = df.append(row)
-    return df
+        records.append(row)
+    if len(records)>0: return pd.DataFrame.from_records(records)
+    return pd.DataFrame({'name':[]})
 
 def parse_lddt(folder):
     data = {'name':[], 'lddt':[]}
     files = glob.glob(os.path.join(folder,'*.npz'))
     if len(files)==0:
-        return pd.DataFrame()
+        return pd.DataFrame({'name':[]})
     for f in files:
         prefix = os.path.basename(f).replace('.npz','')
         lddt_data = np.load(f)
@@ -53,9 +55,7 @@ def parse_lddt(folder):
 
 def parse_rosetta_energy_from_pdb(folder):
     files = glob.glob(os.path.join(folder,'*.pdb'))
-    if len(files)==0:
-        return pd.DataFrame()
-    df = pd.DataFrame()
+    records = []
     for pdbfile in files:
         with open(pdbfile) as inf:
             name = os.path.basename(pdbfile).replace('.pdb','')
@@ -63,14 +63,15 @@ def parse_rosetta_energy_from_pdb(folder):
             for line in inf.readlines():
                 if line.startswith('pose'):
                     rosetta_energy = float(line.split()[-1])
-            row = pd.DataFrame()
-            row['name'] = [name]
+            row = OrderedDict()
+            row['name'] = name
             row['rosetta_energy'] = rosetta_energy
-            df = df.append(row)
-    return df
+            records.append(row)
+    if len(records)==0: return pd.DataFrame({'name':[]})
+    return pd.DataFrame.from_records(records)
 
 def parse_frag_qual(folder):
-    df = pd.DataFrame()
+    records = []
     for frag_folder in glob.glob(os.path.join(folder,'*_fragments')):
         fn = os.path.join(frag_folder,'frag_qual.dat')
         if not os.path.exists(fn): continue
@@ -90,12 +91,13 @@ def parse_frag_qual(folder):
                 index=int(line.split()[1])
             avg_all_frags=np.average(y_avg)
             avg_best_frags=np.average(y_bestmer)
-        row = pd.DataFrame()
-        row['name'] = [os.path.basename(frag_folder).replace('_fragments','')]
+        row = OrderedDict()
+        row['name'] = os.path.basename(frag_folder).replace('_fragments','')
         row['avg_all_frags'] = avg_all_frags
         row['avg_best_frags'] = avg_best_frags
-        df = df.append(row)
-    return df
+        records.append(row)
+    if len(records)==0: return pd.DataFrame({'name':[]})
+    return pd.DataFrame.from_records(records)
 
 def parse_cce(folder):
     df = pd.DataFrame()
@@ -105,53 +107,51 @@ def parse_cce(folder):
     if df.shape[0]>0:
         df.columns = ['name','cce10','cce_1d','acc']
         return df[['name','cce10']]
-    else:
-        return df
+    return pd.DataFrame({'name':[]})
+
+def csv2df(fn,**kwargs):
+    if os.path.exists(fn): return pd.read_csv(fn,**kwargs)
+    return pd.DataFrame({'name':[]})
 
 def parse_all_metrics(folder):
-    df = pd.DataFrame()
-    df['name'] = []
+    df = pd.DataFrame({'name':[]})
 
     print(f'Parsing metrics in {folder}: ',end='')
     tmp = parse_lddt(os.path.join(folder,'lddt'))
-    if tmp.shape[0]>0:
-        df = df.merge(tmp,on='name',how='outer')
-        print(f'lddt ({tmp.shape[0]}), ',end='')
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'lddt ({tmp.shape[0]}), ',end='',flush=True)
 
     fn = os.path.join(folder,'pymol_metrics.csv')
-    if os.path.exists(fn):
-        tmp = pd.read_csv(fn,index_col=0)
-        df = df.merge(tmp,on='name',how='outer')
-        print(f'pymol metrics ({tmp.shape[0]}), ',end='')
-
     tmp = parse_fastdesign_filters(os.path.join(folder))
-    if tmp.shape[0]>0:
-        df = df.merge(tmp,on='name',how='outer')
-        print(f'rosetta metrics from PDB file ({tmp.shape[0]}), ',end='')
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'rosetta metrics from PDB file ({tmp.shape[0]}), ',end='',flush=True)
 
     tmp = parse_cce(os.path.join(folder,'trr_score'))
-    if tmp.shape[0]>0:
-        df = df.merge(tmp,on='name',how='outer')
-        print(f'cce ({tmp.shape[0]}), ',end='')
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'cce ({tmp.shape[0]}), ',end='',flush=True)
 
     tmp = parse_frag_qual(os.path.join(folder,'frags'))
-    if tmp.shape[0]>0:
-        df = df.merge(tmp,on='name',how='outer')
-        print(f'fragment quality ({tmp.shape[0]}), ',end='')
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'fragment quality ({tmp.shape[0]}), ',end='',flush=True)
 
-    fn = os.path.join(folder,'ss_frac.csv')
-    if os.path.exists(fn):
-        tmp = pd.read_csv(fn,index_col=0)
-        df = df.merge(tmp,on='name',how='outer')
-        print(f'sec. struct. frac ({tmp.shape[0]}), ',end='')
+    tmp = csv2df(os.path.join(folder,'ss_frac.csv'),index_col=0)
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'sec. struct. frac ({tmp.shape[0]}), ',end='',flush=True)
 
-    fn = os.path.join(folder,'tmscores.csv')
-    if os.path.exists(fn):
-        tmp = pd.read_csv(fn,index_col=0)
-        df = df.merge(tmp,on='name',how='outer')
-        print(f'TM-scores ({tmp.shape[0]}), ',end='')
+    tmp = csv2df(os.path.join(folder,'tmscores.csv'),index_col=0)
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'TM-scores ({tmp.shape[0]}), ',end='',flush=True)
+
+    tmp = csv2df(os.path.join(folder,'rmsd_trr.csv'))
+    df = df.merge(tmp[['name','rmsd']].rename(columns={'rmsd':'rmsd_trr'}),on='name',how='outer')
+    print(f'TrR RMSD ({tmp.shape[0]}), ',end='',flush=True)
+
+    tmp = csv2df(os.path.join(folder,'rmsd_trunk.csv'))
+    df = df.merge(tmp[['name','rmsd']].rename(columns={'rmsd':'rmsd_trunk'}),on='name',how='outer')
+    print(f'Trunk RMSD ({tmp.shape[0]})',flush=True)
 
     print(f'final dataframe shape: {df.shape}')
+    print(f'final dataframe columns: {df.columns.values}')
     return df
 
 df = parse_all_metrics(args.folder)

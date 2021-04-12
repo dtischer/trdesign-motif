@@ -33,6 +33,8 @@ sbatch -J lddt.$pre $DIR/predict_lddt.sh $1
 if [ $simple = "false" ]; then
     $DIR/get_cce.sh $1 cce.$pre
     sbatch -J frag.$pre $DIR/pick_frags_calc_qual.sh $1
+    $DIR/get_trr_rmsd.sh $1
+    $DIR/get_trunk_rmsd.sh $1
 fi
 sbatch -J ss.$pre --mem=4g --wrap="$DIR/get_ss_frac.py $1"
 if [ "$#" -eq 2 ]; then
