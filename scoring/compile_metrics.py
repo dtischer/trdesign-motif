@@ -142,6 +142,14 @@ def parse_all_metrics(folder):
     df = df.merge(tmp,on='name',how='outer')
     print(f'TM-scores ({tmp.shape[0]}), ',end='',flush=True)
 
+    tmp = csv2df(os.path.join(folder,'pymol_metrics.csv'),index_col=0)
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'Pymol metrics ({tmp.shape[0]}), ',end='',flush=True)
+
+    tmp = csv2df(os.path.join(folder,'../complex/bcov_metrics.csv'),index_col=0)
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'bcov metrics ({tmp.shape[0]}), ',end='',flush=True)
+
     tmp = csv2df(os.path.join(folder,'rmsd_trr.csv'))
     df = df.merge(tmp[['name','rmsd']].rename(columns={'rmsd':'rmsd_trr'}),on='name',how='outer')
     print(f'TrR RMSD ({tmp.shape[0]}), ',end='',flush=True)

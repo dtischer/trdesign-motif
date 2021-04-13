@@ -35,6 +35,7 @@ if [ $simple = "false" ]; then
     sbatch -J frag.$pre $DIR/pick_frags_calc_qual.sh $1
     $DIR/get_trr_rmsd.sh $1
     $DIR/get_trunk_rmsd.sh $1
+    sbatch -J bcov_metrics.$pre --c 8 --mem 8g --wrap="$DIR/get_bcov_metrics.py $1/../complex/"
 fi
 sbatch -J ss.$pre --mem=4g --wrap="$DIR/get_ss_frac.py $1"
 if [ "$#" -eq 2 ]; then
