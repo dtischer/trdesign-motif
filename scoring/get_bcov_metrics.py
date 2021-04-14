@@ -1,4 +1,14 @@
 #!/software/conda/envs/pyrosetta/bin/python3.7
+#
+# Calculates contact molecular surface and various other metrics suggested by
+# Brian Coventry. XML is unaltered from Brian.
+#
+# Usage:
+#
+#   ./get_bcov_metrics.py FOLDER
+#
+# where FOLDER contains PDBs of complexes you want to score.
+#
 
 import pandas as pd
 import numpy as np

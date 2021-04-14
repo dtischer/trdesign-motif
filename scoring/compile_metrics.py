@@ -151,11 +151,13 @@ def parse_all_metrics(folder):
     print(f'bcov metrics ({tmp.shape[0]}), ',end='',flush=True)
 
     tmp = csv2df(os.path.join(folder,'rmsd_trr.csv'))
-    df = df.merge(tmp[['name','rmsd']].rename(columns={'rmsd':'rmsd_trr'}),on='name',how='outer')
+    if len(tmp)>0:
+        df = df.merge(tmp[['name','rmsd']].rename(columns={'rmsd':'rmsd_trr'}),on='name',how='outer')
     print(f'TrR RMSD ({tmp.shape[0]}), ',end='',flush=True)
 
     tmp = csv2df(os.path.join(folder,'rmsd_trunk.csv'))
-    df = df.merge(tmp[['name','rmsd']].rename(columns={'rmsd':'rmsd_trunk'}),on='name',how='outer')
+    if len(tmp)>0:
+        df = df.merge(tmp[['name','rmsd']].rename(columns={'rmsd':'rmsd_trunk'}),on='name',how='outer')
     print(f'Trunk RMSD ({tmp.shape[0]})',flush=True)
 
     print(f'final dataframe shape: {df.shape}')
