@@ -117,7 +117,6 @@ def main():
       sys.exit(err)
         
     # init pyR
-    #init(f'@{flag_file} -holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -constant_seed')
     init(f'@{flag_file} -holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc')
     
     # Design basename
@@ -625,26 +624,25 @@ def main():
     rmsd = pyrosetta.rosetta.core.scoring.superimpose_pose(p_hal, p_nat, align_map)
 
     # 4. Append p_tar to p_hal and clean up the fold tree
+    
+    # set p_tar to chain B, nummber sequentially
+    for i in range(1, p_tar.total_residue()+1):
+      p_tar.pdb_info().chain(i, 'B')
+      p_tar.pdb_info().number(i, i)
+    
     # concatenate hal ptn to the target
     p_hal.append_pose_by_jump(p_tar, 1 )
     p_hal_tar = p_hal
-
-    print(p_hal_tar.pdb_info())
-    print(pyrosetta.rosetta.core.pose.PDBInfo( p_hal_tar ))
-
-    # make pdb chain lettering sequential
-    for i in range(1, p_hal_tar.total_residue()+1):
-        pdb_chain = list('-ABCDEF')[p_hal_tar.chain(i)]
-        p_hal_tar.pdb_info().chain(i, pdb_chain)
-
+    
     # reverse the fold tree so that the last atom is the root
     ft = p_hal_tar.fold_tree()
     ft.reorder( p_hal_tar.size() ) # reverse the fold tree
     p_hal_tar.fold_tree(ft)
-
+    
+    # check things are okay
     print(p_hal_tar.pdb_info())
     print(p_hal_tar.fold_tree())
-    
+
     
     # 5. Constrain p_hal to stay in place. Must be done after the two poses are combined
     for pdb_idx_nat in args.freeze_native_residues:
