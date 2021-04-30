@@ -1,15 +1,15 @@
 #!/bin/bash
 #
-# Usage: ./calc_cce.sh FOLDER_OF_PDBS
+# Usage: ./get_cce.sh FOLDER_OF_PDBS
 #
-# Optional: ./calc_cce.sh FOLDER_OF_PDBS JOB_NAME
+# Optional: ./get_cce.sh FOLDER_OF_PDBS JOB_NAME
 #
 
 outdir=$1/trr_score
 mkdir -p $outdir
 
 if [ "$#" -lt 2 ]; then
-    jobname=calc_cce.sh
+    jobname=get_cce.sh
 else
     jobname=$2
 fi

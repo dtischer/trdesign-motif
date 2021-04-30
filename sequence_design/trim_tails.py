@@ -57,8 +57,12 @@ def trim_tails(pose, trb_path=None):
    - pose: single chain pose
   '''
 
-  # calc DSSP
-
+  # break disulfides to avoid error while trimming
+  disulfide_res = core.select.residue_selector.ResidueNameSelector("CYS:disulfide")
+  for i in core.select.get_residues_from_subset(disulfide_res.apply(pose)):
+    for j in core.select.get_residues_from_subset(disulfide_res.apply(pose)):
+        if core.conformation.is_disulfide_bond(pose.conformation(), i, j):
+            core.conformation.break_disulfide(pose.conformation(), i, j)
   
   # define the start/end of contigs.
   if trb_path is not None:

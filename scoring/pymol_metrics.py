@@ -30,6 +30,7 @@ from pymol import cmd,stored
 from glob import glob
 from os.path import dirname, basename, exists
 import argparse
+from collections import OrderedDict
 
 p = argparse.ArgumentParser()
 p.add_argument('data_dir', help='Folder of TrDesign outputs to process')
@@ -139,15 +140,16 @@ df = pd.DataFrame()
 if args.trb_dir is not None: trb_dir = args.trb_dir
 else: trb_dir = args.data_dir
 
+records = []
 for f in glob(os.path.join(args.data_dir,'*.pdb')):
-    row = pd.Series()
+    row = OrderedDict()
     row['name'] = os.path.basename(f).replace('.pdb','')
     print(row['name'])
 
     trbname = os.path.join(trb_dir, os.path.basename(f.replace(args.pdb_suffix+'.pdb','.trb')))
     if not exists(trbname): 
-        print('{trbname} does not exist, skipping')
-        continue
+        sys.exit(f'ERROR: {trbname} does not exist. Set the --trb_dir argument if your .trb files '\
+                  'are in a different folder from the .pdb files.')
     trk = np.load(trbname,allow_pickle=True)
 
     if 'loss_nodrop' in trk:
@@ -193,9 +195,8 @@ for f in glob(os.path.join(args.data_dir,'*.pdb')):
     cmd.remove(row['name'])
     cmd.delete(row['name'])
 
-    df = df.append(row, ignore_index=True)
-
-df = df.reset_index(drop=True)
+    records.append(row)
+df = pd.DataFrame.from_records(records)
 
 print(f'Outputting computed metrics to {outfile}')
 df.to_csv(outfile)
