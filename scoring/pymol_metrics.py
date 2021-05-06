@@ -108,8 +108,11 @@ def get_rmsd(refidx, halidx, refname, halname):
     #cmd.iterate(ref_prefix+'//CA','print(resi)')
 
     # detect clashes
-    receptor = os.path.basename(args.receptor).replace('.pdb','')
-    n = cmd.select(f'{halname}////CA and all within {args.clashdist} of {receptor}')
+    if args.receptor is not None:
+        receptor = os.path.basename(args.receptor).replace('.pdb','')
+        n = cmd.select(f'{halname}////CA and all within {args.clashdist} of {receptor}')
+    else:
+        n = None
 
     return rms, n
 
