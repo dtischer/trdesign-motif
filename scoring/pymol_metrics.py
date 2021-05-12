@@ -73,10 +73,19 @@ def get_contig_idx(trk):
     return np.array(refidx,dtype=int), np.array(halidx,dtype=int)
 
 def get_rmsd(refidx, halidx, refname, halname):
+
     # get residue numbers
     stored.idx = []
     cmd.iterate(refname,'stored.idx.append(resi)')
     ref_idx_all = np.array([int(i) for i in stored.idx])
+    stored.idx = []
+    cmd.iterate(halname,'stored.idx.append(resi)')
+    hal_idx_all = np.array([int(i) for i in stored.idx])
+
+    # remove contig positions not present in halluc (due to trimming)
+    mask = np.isin(halidx,hal_idx_all)
+    halidx = halidx[mask]
+    refidx = refidx[mask]
 
     # renumber contigs so selection residues are monotonically increasing
     contigs = idx2contigstr(refidx)
