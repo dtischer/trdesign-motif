@@ -34,7 +34,7 @@ done > $task_file
 count=$(cat $task_file | wc -l)
 if [ "$count" -gt 0 ]; then
     echo "Folding $count designs..."
-    sbatch -a 1-$(cat $task_file | wc -l) -J fold.`basename $1` -c 1 --mem=10g \
+    sbatch -a 1-$(cat $task_file | wc -l) -J fold.`basename $1` -c 1 -p short --mem=10g \
            -o /dev/null -e /dev/null \
            --wrap="eval \`sed -n \${SLURM_ARRAY_TASK_ID}p $task_file\`"
 else
