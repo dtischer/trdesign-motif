@@ -6,6 +6,11 @@
 #
 # Usage:
 #
+#     ./pyrosetta_metrics.py DESIGNS_FOLDER
+#
+# This calculates the RMSD to the template given in the .trb file for each
+# design. If you'd like to provide the template, use:
+#
 #     ./pyrosetta_metrics.py --template TEMPLATE_PDB DESIGNS_FOLDER
 #
 # Passing a file with space-delimited residue numbers to --interface_res will
@@ -94,7 +99,8 @@ def main():
 
     DSSP = pyrosetta.rosetta.protocols.moves.DsspMover()
 
-    pose_ref = pyrosetta.pose_from_file(args.template)
+    if args.template is not None:
+        pose_ref = pyrosetta.pose_from_file(args.template)
 
     # calculate contig RMSD
     print(f'Calculating RMSDs')
@@ -122,6 +128,9 @@ def main():
                     row[k] = trb[k][0]
                 else:
                     row[k] = trb[k]
+
+        if args.template is None:
+            pose_ref = pyrosetta.pose_from_file(trb['settings']['pdb'])
 
         pose_hal = pyrosetta.pose_from_file(fn)
 

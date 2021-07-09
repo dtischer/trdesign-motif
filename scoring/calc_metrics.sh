@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Calculate lddt, cce10, avg_all_frags: 
+# Calculate lddt, rmsd, ss frac, and parses losses:
 #
 #   ./calc_metrics.sh FOLDER 
 #
-# "Simple" mode (does not do cce10 or avg_all_frags):
+# "Full" mode (also does cce10, avg_all_frags):
 #
-#   ./calc_metrics.sh -s FOLDER
+#   ./calc_metrics.sh -f FOLDER
 #
 # Also include contig rmsd: 
 #
@@ -24,16 +24,19 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )" # abs path of this script
 
 OPTIND=1
-simple=false
-while getopts ":s" opt; do
+simple=true
+while getopts ":sf" opt; do
     case $opt in
         s) simple=true;;
+        f) simple=false;;
     esac
 done
 shift $((OPTIND-1))
 
 pre=`basename $1`
 sbatch -J lddt.$pre $DIR/predict_lddt.sh $1
+sbatch --mem 1g -J pyros.$pre --wrap="$DIR/pyrosetta_metrics $1"
+
 if [ $simple = "false" ]; then
     $DIR/get_cce.sh $1 cce.$pre
     sbatch -J frag.$pre $DIR/pick_frags_calc_qual.sh $1
@@ -41,7 +44,7 @@ if [ $simple = "false" ]; then
     $DIR/get_trunk_rmsd.sh $1
     sbatch -J bcov_metrics.$pre -c 8 --mem 8g --wrap="$DIR/get_bcov_metrics.py $1/../complex/"
 fi
-sbatch -J ss.$pre --mem=4g --wrap="$DIR/get_ss_frac.py $1"
+
 if [ "$#" -eq 2 ]; then
     sbatch -J tmscore.$pre -c 1 --mem=2g --wrap="$DIR/get_tmscores.py --template $2 $1"
 elif [ "$#" -eq 4 ]; then
