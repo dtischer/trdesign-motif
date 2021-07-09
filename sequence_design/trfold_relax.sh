@@ -41,3 +41,6 @@ if [ "$count" -gt 0 ]; then
 else
     echo "No designs need relaxing. To refold, delete or move existing .pdb files."
 fi
+
+cd $outdir
+ln -s ../*.trb .

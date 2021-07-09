@@ -35,7 +35,7 @@ shift $((OPTIND-1))
 
 pre=`basename $1`
 sbatch -J lddt.$pre $DIR/predict_lddt.sh $1
-sbatch --mem 1g -J pyros.$pre --wrap="$DIR/pyrosetta_metrics $1"
+sbatch --mem 1g -J pyros.$pre --wrap="$DIR/pyrosetta_metrics.py $1"
 
 if [ $simple = "false" ]; then
     $DIR/get_cce.sh $1 cce.$pre
