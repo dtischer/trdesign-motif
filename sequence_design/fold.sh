@@ -13,10 +13,12 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
+roll="--roll"
 OPTIND=1
-while getopts ":r" opt; do
+while getopts ":rn" opt; do
     case $opt in
         r) roll="--roll";;
+        n) roll="";;
     esac
 done
 shift $((OPTIND-1))

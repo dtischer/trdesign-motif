@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -p gpu
 #SBATCH --mem=8g
-#SBATCH --gres=gpu:rtx2080:1
+#SBATCH --gres=gpu:1
 #SBATCH -c 2
 #SBATCH -o /dev/null # don't generate slurm.txt logs (but do make real log file below)
 #SBATCH -e /dev/null

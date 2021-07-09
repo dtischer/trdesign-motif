@@ -9,7 +9,7 @@
 #
 import pandas as pd
 import numpy as np
-import os, glob, argparse
+import os, glob, argparse, sys
 from collections import OrderedDict
 
 p = argparse.ArgumentParser()
@@ -19,6 +19,9 @@ args = p.parse_args()
 
 if args.out is None:
     args.out = os.path.join(args.folder,'combined_metrics.csv')
+
+if not os.path.isdir(args.folder):
+    sys.exit(f'ERROR: Input path {args.folder} not a folder.')
 
 def parse_fastdesign_filters(folder):
     files = glob.glob(os.path.join(folder,'*.pdb'))
@@ -134,10 +137,6 @@ def parse_all_metrics(folder):
     df = df.merge(tmp,on='name',how='outer')
     print(f'fragment quality ({tmp.shape[0]}), ',end='',flush=True)
 
-    tmp = csv2df(os.path.join(folder,'ss_frac.csv'),index_col=0)
-    df = df.merge(tmp,on='name',how='outer')
-    print(f'sec. struct. frac ({tmp.shape[0]}), ',end='',flush=True)
-
     tmp = csv2df(os.path.join(folder,'tmscores.csv'),index_col=0)
     df = df.merge(tmp,on='name',how='outer')
     print(f'TM-scores ({tmp.shape[0]}), ',end='',flush=True)
@@ -145,6 +144,10 @@ def parse_all_metrics(folder):
     tmp = csv2df(os.path.join(folder,'pymol_metrics.csv'),index_col=0)
     df = df.merge(tmp,on='name',how='outer')
     print(f'Pymol metrics ({tmp.shape[0]}), ',end='',flush=True)
+
+    tmp = csv2df(os.path.join(folder,'pyrosetta_metrics.csv'),index_col=0)
+    df = df.merge(tmp,on='name',how='outer')
+    print(f'Pyrosetta metrics ({tmp.shape[0]}), ',end='',flush=True)
 
     tmp = csv2df(os.path.join(folder,'../complex/bcov_metrics.csv'),index_col=0)
     df = df.merge(tmp,on='name',how='outer')
