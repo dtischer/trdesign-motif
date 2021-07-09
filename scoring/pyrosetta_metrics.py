@@ -33,8 +33,8 @@ pyrosetta.init('-mute all')
 p = argparse.ArgumentParser()
 p.add_argument('data_dir', help='Folder of TrDesign outputs to process')
 p.add_argument('-t','--template', help='Template (natural binder) structure (.pdb)')
-p.add_argument('--sc_rmsd', action='store_true', default=False, 
-    help='Also calculate side-chain RMSD. Will give error if the residues aren\'t matched.')
+p.add_argument('--sc_rmsd', action='store_true', default=True, 
+    help='Also calculate side-chain RMSD, returning NaN if residues aren\'t matched.')
 p.add_argument('--interface_res', 
     help='File with space-separated integers of residue positions. Report rmsd on these '\
          'residues as "interface_rmsd"')
