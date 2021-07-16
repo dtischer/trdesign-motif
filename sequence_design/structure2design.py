@@ -54,7 +54,7 @@ def main():
     parser.add_argument('--pssm_file', type=str, help='path to pssm file')
     
     # Force aa from contigs
-    parser.add_argument('--freeze_native_residues', type=int, nargs='+', help='force these aa from the native into the hallucinated protein')
+    parser.add_argument('--freeze_native_residues', type=int, nargs='+', help='force these aa from the native into the hallucinated protein. PDB residue index.')
     parser.add_argument('--frozen_chain', type=str, default='A', help='native chain the frozen residues are from')
     parser.add_argument('--native', type=str, help='Path to the native PDB (where the contig geometry was taken from).'
                        'This overrides any option in trb["settings"]["pdb"]')

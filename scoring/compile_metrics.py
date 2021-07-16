@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Parses and compiles metrics previously computed by calc_metrics.sh.
 #

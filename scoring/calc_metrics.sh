@@ -4,10 +4,6 @@
 #
 #   ./calc_metrics.sh FOLDER 
 #
-# "Simple" mode (does not do cce10 or avg_all_frags):
-#
-#   ./calc_metrics.sh -s FOLDER
-#
 # Also include contig rmsd: 
 #
 #   ./calc_metrics.sh FOLDER TEMPLATE RECEPTOR 
