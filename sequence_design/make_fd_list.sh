@@ -40,7 +40,11 @@ for PDB in $1/*.pdb; do
         cmd+="$DIR/pssm/mk_pssm.sh $TRIMMED &>> $logfile; "
     fi
     if [ ! -f $1/fast_designs/chA/$ID.pdb ]; then
-        cmd+="$DIR/structure2design.py --pdb_in $TRIMMED --trb_file $TRB --out_dir ./ --native $ABS2 --tar $ABS3 --freeze_native_residues `cat $ABS4` --pssm_file=pssm/${ID}_0001.profile.pssm --pssm_mode=norn1 --layer_design=True &>> $logfile"
+        if [[ "$ABS3" == *"None" ]]; then
+            cmd+="$DIR/structure2design.py --pdb_in $TRIMMED --trb_file $TRB --out_dir ./ --native $ABS2 --freeze_native_residues `cat $ABS4` --pssm_file=pssm/${ID}_0001.profile.pssm --pssm_mode=norn1 --layer_design=True &>> $logfile"
+        else
+            cmd+="$DIR/structure2design.py --pdb_in $TRIMMED --trb_file $TRB --out_dir ./ --native $ABS2 --tar $ABS3 --freeze_native_residues `cat $ABS4` --pssm_file=pssm/${ID}_0001.profile.pssm --pssm_mode=norn1 --layer_design=True &>> $logfile"
+        fi
         echo $cmd
     fi
 done  

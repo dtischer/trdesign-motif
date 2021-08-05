@@ -60,7 +60,7 @@ def main():
                        'This overrides any option in trb["settings"]["pdb"]')
     
     # Target of binding (usually a receptor)
-    parser.add_argument('--tar', type=str, help='Path to target pdb file')
+    parser.add_argument('--tar', type=str, default=None, help='Path to target pdb file')
     
     # Sequence design options
     parser.add_argument('--sfxn', type=str, default='beta_nov16', help='What score function to use <beta_nov16, HH_19>')
@@ -125,7 +125,8 @@ def main():
     # Load pdbs
     p_hal = pyrosetta.pose_from_file(args.pdb_in)
     p_nat = pose_from_file(nat_f)
-    p_tar = pose_from_file(args.tar)
+    if args.tar:
+        p_tar = pose_from_file(args.tar)
     info = p_hal.pdb_info()
     
     ###############################################################################
@@ -231,11 +232,11 @@ def main():
             <And name="surface_SCN_and_not_hbnet_res" selectors="surface_SCN,not_hbnet_res"/>
 
             <Chain name="chainA" chains="1" />
-            <Chain name="chainB" chains="2" />
-            <InterfaceByVector name="interface" grp1_selector="chainA" grp2_selector="chainB" />
-            <And name="interface_chainB" selectors="interface,chainB" />
-            <Not name="not_interface" selector="interface" />
-            <And name="not_interface_chainB" selectors="not_interface,chainB" />
+            {'<Chain name="chainB" chains="2" />' if args.tar else ''}
+            {'<InterfaceByVector name="interface" grp1_selector="chainA" grp2_selector="chainB" />' if args.tar else ''}
+            {'<And name="interface_chainB" selectors="interface,chainB" />' if args.tar else ''}
+            {'<Not name="not_interface" selector="interface" />' if args.tar else ''}
+            {'<And name="not_interface_chainB" selectors="not_interface,chainB" />' if args.tar else ''}
 
             <ResiduePDBInfoHasLabel name="HOTSPOT_res" property="HOTSPOT" />
 
@@ -317,13 +318,13 @@ def main():
                 <RestrictToRepackingRLT/>
             </OperateOnResidueSubset>
 
-            <OperateOnResidueSubset name="repack_interface_chainB" selector="interface_chainB">
-                <RestrictToRepackingRLT/>
-            </OperateOnResidueSubset>
+            {'<OperateOnResidueSubset name="repack_interface_chainB" selector="interface_chainB">' if args.tar else ''}
+                {'<RestrictToRepackingRLT/>' if args.tar else ''}
+            {'</OperateOnResidueSubset>' if args.tar else ''} 
 
-            <OperateOnResidueSubset name="freeze_not_interface_chainB" selector="not_interface_chainB">
-                <PreventRepackingRLT/>
-            </OperateOnResidueSubset>
+            {'OperateOnResidueSubset name="freeze_not_interface_chainB" selector="not_interface_chainB">' if args.tar else ''}
+                {'<PreventRepackingRLT/>' if args.tar else ''}
+            {'</OperateOnResidueSubset>' if args.tar else ''}
             
             # layer design task ops
             # strand and loops
@@ -384,20 +385,20 @@ def main():
           <FastRelax name="fastRelax" scorefxn="sfxn_pure" task_operations="init,ex1_ex2aro,ic" cartesian="{str(cart).lower()}">
               <MoveMap name="MM">                
                   <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
-                  <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
-                  <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
-                  <Jump number="1" setting="true" />
+                  {'<ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />' if args.tar else ''}
+                  {'<ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />' if args.tar else ''}
+                  {'<Jump number="1" setting="true" />' if args.tar else ''}
               </MoveMap>
           </FastRelax>
 
           <ClearConstraintsMover name="rm_csts" />
 
-          <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2"  task_operations="init,ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots,repack_interface_chainB,freeze_not_interface_chainB{",strand_surface_aa,strand_boundary_aa,strand_core_aa,design_loops_surface,design_loops_boundary,design_loops_core,design_edges_core,ld1,ld2,ld5,ld6,ld9,ld10,ld13" if layer_design else ""}" batch="false" ramp_down_constraints="false" cartesian="{str(cart).lower()}" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
+          <FastDesign name="fastDesign" scorefxn="SFXN3" repeats="2"  task_operations="init,ex1_ex2aro,ld_surface_not_hbnets,fix_hbnet_residues,ic,limitchi2,pssm_cutoff,noCys,repack_hotspots{',repack_interface_chainB,freeze_not_interface_chainB' if args.tar else ''}{",strand_surface_aa,strand_boundary_aa,strand_core_aa,design_loops_surface,design_loops_boundary,design_loops_core,design_edges_core,ld1,ld2,ld5,ld6,ld9,ld10,ld13" if layer_design else ""}" batch="false" ramp_down_constraints="false" cartesian="{str(cart).lower()}" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="MonomerDesign2019"> 
               <MoveMap name="MM">                
                   <ResidueSelector selector="chainA" chi="true" bb="true" bondangle="false" bondlength="false" />
-                  <ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />
-                  <ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />
-                  <Jump number="1" setting="true" />
+                  {'<ResidueSelector selector="interface_chainB" chi="true" bb="false" bondangle="false" bondlength="false" />' if args.tar else ''}
+                  {'<ResidueSelector selector="not_interface_chainB" chi="false" bb="false" bondangle="false" bondlength="false" />' if args.tar else ''}
+                  {'<Jump number="1" setting="true" />' if args.tar else ''}
               </MoveMap>
           </FastDesign>
 
@@ -429,7 +430,7 @@ def main():
           <Geometry name="geom" count_bad_residues="true" confidence="0"/>
           <MoveBeforeFilter name="geom_monomer" mover="chain1only" filter="geom" confidence="0" />
 
-          <Ddg name="ddg"  threshold="-10" jump="1" repeats="5" repack="1" confidence="0" scorefxn="sfxn_pure" extreme_value_removal="true"/>
+          {'<Ddg name="ddg"  threshold="-10" jump="1" repeats="5" repack="1" confidence="0" scorefxn="sfxn_pure" extreme_value_removal="true"/>' if args.tar else ''} 
         </FILTERS>
 
         <PROTOCOLS>
@@ -445,7 +446,7 @@ def main():
              # dt added filters
              <Add filter_name="score_res_monomer" />
              <Add filter_name="geom_monomer"/>
-             <Add filter_name="ddg" />
+             {'<Add filter_name="ddg" />' if args.tar else ''}
 
         </PROTOCOLS>
 
@@ -631,7 +632,8 @@ def main():
       p_tar.pdb_info().number(i, i)
     
     # concatenate hal ptn to the target
-    p_hal.append_pose_by_jump(p_tar, 1 )
+    if args.tar:
+        p_hal.append_pose_by_jump(p_tar, 1 )
     p_hal_tar = p_hal
     
     # reverse the fold tree so that the last atom is the root
