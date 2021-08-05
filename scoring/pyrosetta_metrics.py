@@ -52,38 +52,123 @@ def idx2contigstr(idx):
     contigs += [f'{idx[istart]}-{idx[-1]}']
     return contigs
 
-def get_rmsd(pose_ref, pose_hal, trb, mode='ca', interface_res=None):
-    if mode=='ca':
-        atoms = ["CA"]
+def mk_con_to_set(mask, set_id=None):
+    '''
+    Maps a mask or list of contigs to a set_id
 
-    align_map = pyrosetta.rosetta.std.map_core_id_AtomID_core_id_AtomID()
+    Input
+    -----------
+    mask (str): Mask or list of contigs. Ex: 3,B6-11,12,A12-19,9 or Ex: B6-11,A12-19
+    set_id (list): List of integers Ex: [0,1]
 
-    for idx_ref, idx_hal in zip(trb['con_ref_pdb_idx'], trb['con_hal_pdb_idx']):
-        if interface_res is not None and idx_ref not in interface_res:
-            continue
+    Output
+    -----------
+    con_to_set (dict): Maps str of contig to integer
+    '''
 
-        # Find equivalent residues in both structures
-        pose_idx_ref = pose_ref.pdb_info().pdb2pose(*idx_ref)
-        pose_idx_hal = pose_hal.pdb_info().pdb2pose(*idx_hal)
+    # Extract contigs
+    cons = [l for l in mask.split(',') if l[0].isalpha()]
 
-        res_hal = pose_hal.residue(pose_idx_hal)
-        res_ref = pose_ref.residue(pose_idx_ref)
+    # Assign all contigs to one set if set_id is not passed
+    if set_id is None:
+        set_id = [0] * len(cons)
 
-        if mode=='sc':
-            if res_hal.name3() != res_ref.name3():
-                print(f'Returning sidechain RMSD=NaN because template {res_ref.name1()}{idx_ref[1]} '\
-                      f'!= hallucination {res_hal.name1()}{idx_hal[1]}.')
-                return np.nan
-            atoms = [res_ref.atom_name(i) for i in range(4,res_ref.natoms()+1)]
+    con_to_set = dict(zip(cons, set_id))
 
-        for atom in atoms:
-            atom_index = res_hal.atom_index(atom)  # this is the same number for either residue
-            atom_id_ref = pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_ref)
-            atom_id_hal = pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_hal)
-            align_map[atom_id_hal] = atom_id_ref
+    return con_to_set  
+  
+def get_rmsd(pose_ref, pose_hal, trb, mode='bb', interface_res=None):
+    '''
+    Inputs:
+    ---------------
+    mode (str; <bb, sc, fa>): Calculate rmsd over backbone, side chain or all heavy atoms (bb and sc).
+    
+    '''
+    is_sc = pyrosetta.rosetta.core.scoring.is_protein_sidechain_heavyatom
 
-    rmsd = pyrosetta.rosetta.core.scoring.superimpose_pose(pose_hal, pose_ref, align_map)
-    return rmsd
+    ref_to_hal = dict(zip(trb['con_ref_pdb_idx'], trb['con_hal_pdb_idx']))
+    
+    # grab contigs and their sets
+    if trb['settings'].get('mask') is not None:
+        mask = trb['settings'].get('mask')
+    elif trb['settings'].get('contigs') is not None:
+        mask = trb['settings'].get('contigs')
+      
+    if 'con_set_id' in trb['settings']:
+        con_set_id = trb['settings'].get('con_set_id').split(',')
+    else:
+        con_set_id = None
+    con_to_set = mk_con_to_set(mask=mask, set_id=con_set_id)
+        
+    # calc RMSD for every contig set
+    squares_by_set = []
+    lengths_by_set = []
+    for set_id in set(con_to_set.values()):
+        # Grab all ref_pdb_idx in the set_id
+        set_ref_pdb_idx = []
+        for k,v in con_to_set.items():
+            if v == set_id:
+                ref_ch = k[0]
+                s, e = k[1:].split('-')
+                s, e = int(s), int(e)
+
+                for ref_idx in range(s, e+1):
+                    set_ref_pdb_idx.append((ref_ch, ref_idx))
+        
+        # Make alignment maps
+        align_map = pyrosetta.rosetta.std.map_core_id_AtomID_core_id_AtomID()    
+        for idx_ref in set_ref_pdb_idx:
+            idx_hal = ref_to_hal[idx_ref]
+          
+            if interface_res is not None and idx_ref not in interface_res:
+                continue
+
+            # Find equivalent residues in both structures
+            pose_idx_ref = pose_ref.pdb_info().pdb2pose(*idx_ref)
+            pose_idx_hal = pose_hal.pdb_info().pdb2pose(*idx_hal)
+
+            res_hal = pose_hal.residue(pose_idx_hal)
+            res_ref = pose_ref.residue(pose_idx_ref)
+            
+            # Decide what atoms to calc rmsd over
+            # sc
+            if mode == 'sc':
+                if res_hal.name3() != res_ref.name3():
+                    print(f'Returning sidechain RMSD=NaN because template {res_ref.name1()}{idx_ref[1]} '\
+                          f'!= hallucination {res_hal.name1()}{idx_hal[1]}.')
+                    return np.nan
+                
+                atoms_sc = [res_ref.atom_name(i) for i in range(4,res_ref.natoms()+1) if is_sc(pose_ref, pose_ref, pose_idx_ref, i)]
+
+            # bb
+            atoms_bb = ['N', 'CA', 'C']
+            
+            if mode == 'fa':
+              atoms = atoms_bb + atoms_sc
+            elif mode == 'bb':
+              atoms = atoms_bb
+            elif mode == 'sc':
+              atoms = atoms_sc
+                
+            # fill out alignment map
+            for atom in atoms:
+                atom_index = res_hal.atom_index(atom)  # this is the same number for either residue
+                atom_id_ref = pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_ref)
+                atom_id_hal = pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_hal)
+                align_map[atom_id_hal] = atom_id_ref
+        
+        # Align and update metrics
+        rmsd = pyrosetta.rosetta.core.scoring.superimpose_pose(pose_hal, pose_ref, align_map)
+        L = len(atoms)
+        lengths_by_set.append(L)
+        squares_by_set.append((rmsd ** 2) * L)
+    
+    # Average RMSD across all sets
+    lengths_by_set = np.array(lengths_by_set)
+    squares_by_set = np.array(squares_by_set)
+    rmsd_all_sets = np.sqrt( squares_by_set.sum() / lengths_by_set.sum() )
+    
+    return rmsd_all_sets
 
 def main():
 
@@ -134,7 +219,7 @@ def main():
 
         pose_hal = pyrosetta.pose_from_file(fn)
 
-        row['contig_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='ca')
+        row['contig_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='bb')
         if args.sc_rmsd:
             row['contig_sc_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='sc')
 
