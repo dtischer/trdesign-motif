@@ -93,11 +93,11 @@ def get_rmsd(pose_ref, pose_hal, trb, mode='bb', interface_res=None):
         mask = trb['settings'].get('mask')
     elif trb['settings'].get('contigs') is not None:
         mask = trb['settings'].get('contigs')
-      
-    if 'con_set_id' in trb['settings']:
-        con_set_id = trb['settings'].get('con_set_id').split(',')
-    else:
-        con_set_id = None
+        
+    con_set_id = trb['settings'].get('con_set_id')
+    if con_set_id is not None:
+        con_set_id = con_set_id.split(',')
+        
     con_to_set = mk_con_to_set(mask=mask, set_id=con_set_id)
         
     # calc RMSD for every contig set
