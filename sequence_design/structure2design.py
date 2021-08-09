@@ -73,7 +73,7 @@ def mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, layer_design
         <Layer name="init_core_SCN" select_core="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
         <Layer name="init_boundary_SCN" select_boundary="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
         <Layer name="surface_SCN" select_surface="True" use_sidechain_neighbors="True" surface_cutoff="1.0" />
-        {'<Index name="hbnet_res" resnums="{hbnet_resnums_str}"/>' if hbnet_resnums_str is not None else ''}
+        {f'<Index name="hbnet_res" resnums="{hbnet_resnums_str}"/>' if hbnet_resnums_str is not None else ''}
         {'<Not name="not_hbnet_res" selector="hbnet_res" />' if hbnet_resnums_str is not None else ''}
         {'<And name="surface_SCN_and_not_hbnet_res" selectors="surface_SCN,not_hbnet_res"/>' if hbnet_resnums_str is not None else ''}
 
@@ -154,7 +154,7 @@ def mk_xml(weight_file, min_aa_probability, sequnce_profile_weight, layer_design
         <LimitAromaChi2 name="limitchi2" chi2max="110" chi2min="70" include_trp="True"/>
         <ExtraRotamersGeneric name="ex1_ex2aro" ex1="1" ex2aro="1"/>
         <IncludeCurrent name="ic"/>
-        {'<RestrictResiduesToRepacking name="fix_hbnet_residues" residues="{hbnet_resnums_str}"/>' if hbnet_resnums_str is not None else ''}
+        {f'<RestrictResiduesToRepacking name="fix_hbnet_residues" residues="{hbnet_resnums_str}"/>' if hbnet_resnums_str is not None else ''}
 
         {'<OperateOnResidueSubset name="ld_surface_not_hbnets" selector="surface_SCN_and_not_hbnet_res">' if hbnet_resnums_str is not None else ''}
             {'<RestrictAbsentCanonicalAASRLT aas="EDHKRQNSTPG"/>' if hbnet_resnums_str is not None else ''}
