@@ -63,7 +63,7 @@ def mk_con_to_set(mask, set_id=None):
 
     Output
     -----------
-    con_to_set (dict): Maps str of contig to integer
+    con_to_set (dict): Maps contig str to integer
     '''
 
     # Extract contigs
