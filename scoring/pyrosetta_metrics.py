@@ -232,7 +232,7 @@ def main():
                     else:
                         interface_res.append(('A', int(x)))
 
-            row['interface_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='ca', interface_res=interface_res)
+            row['interface_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='bb', interface_res=interface_res)
             if args.sc_rmsd:
                 row['interface_sc_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='sc', interface_res=interface_res)
 
