@@ -43,4 +43,7 @@ else
 fi
 
 cd $outdir
-ln -s ../*.trb .
+ct=$(find ../ -maxdepth 1 -name '*.trb' | wc -l)
+if [ "$ct" -gt 0 ]; then
+    ln -sf ../*.trb .
+fi

@@ -43,20 +43,44 @@ p.add_argument('--trb_dir', help='Folder containing .trb files (if not same as p
 p.add_argument('--pdb_suffix', default='', help='PDB files have this suffix relative to trb files')
 args = p.parse_args()
 
-def idx2contigstr(idx):
-    istart = 0
-    contigs = []
-    for iend in np.where(np.diff(idx)!=1)[0]:
-            contigs += [f'{idx[istart]}-{idx[iend]}']
-            istart = iend+1
-    contigs += [f'{idx[istart]}-{idx[-1]}']
-    return contigs
+def calc_rmsd(xyz_ref, xyz_hal, eps=1e-6):
+
+    # center to CA centroid
+    xyz_ref = xyz_ref - xyz_ref.mean(0)
+    xyz_hal = xyz_hal - xyz_hal.mean(0)
+
+    # Computation of the covariance matrix
+    C = xyz_hal.T @ xyz_ref
+
+    # Compute optimal rotation matrix using SVD
+    V, S, W = np.linalg.svd(C)
+
+    # get sign to ensure right-handedness
+    d = np.ones([3,3])
+    d[:,-1] = np.sign(np.linalg.det(V)*np.linalg.det(W))
+
+    # Rotation matrix U
+    U = (d*V) @ W
+
+    # Rotate xyz_hal
+    rP = xyz_hal @ U
+
+    L = rP.shape[0]
+    rmsd = np.sqrt(np.sum((rP-xyz_ref)*(rP-xyz_ref), axis=(0,1)) / L + eps)
+
+    return rmsd
 
 def get_rmsd(pose_ref, pose_hal, trb, mode='ca', interface_res=None):
+
     if mode=='ca':
         atoms = ["CA"]
 
-    align_map = pyrosetta.rosetta.std.map_core_id_AtomID_core_id_AtomID()
+    xyz_ref = []
+    xyz_hal = []
+
+    if 'con_ref_pdb_idx' not in trb:
+        trb['con_ref_pdb_idx'] = [('A',i) for i in trb['con_ref_idx0'][0]]
+        trb['con_hal_pdb_idx'] = [('A',i+1) for i in trb['con_hal_idx0'][0]]
 
     for idx_ref, idx_hal in zip(trb['con_ref_pdb_idx'], trb['con_hal_pdb_idx']):
         if interface_res is not None and idx_ref not in interface_res:
@@ -71,19 +95,19 @@ def get_rmsd(pose_ref, pose_hal, trb, mode='ca', interface_res=None):
 
         if mode=='sc':
             if res_hal.name3() != res_ref.name3():
-                print(f'Returning sidechain RMSD=NaN because template {res_ref.name1()}{idx_ref[1]} '\
-                      f'!= hallucination {res_hal.name1()}{idx_hal[1]}.')
                 return np.nan
-            atoms = [res_ref.atom_name(i) for i in range(4,res_ref.natoms()+1)]
+            atoms_ref = [res_ref.atom_name(i) for i in range(5,res_ref.natoms()+1)]
+            atoms_hal = [res_hal.atom_name(i) for i in range(5,res_hal.natoms()+1)]
+            atoms = [a for a in atoms_ref if a in atoms_hal]
 
         for atom in atoms:
-            atom_index = res_hal.atom_index(atom)  # this is the same number for either residue
-            atom_id_ref = pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_ref)
-            atom_id_hal = pyrosetta.rosetta.core.id.AtomID(atom_index, pose_idx_hal)
-            align_map[atom_id_hal] = atom_id_ref
+            xyz_ref.append(np.array(res_ref.atom(res_ref.atom_index(atom)).xyz()))
+            xyz_hal.append(np.array(res_hal.atom(res_hal.atom_index(atom)).xyz()))
 
-    rmsd = pyrosetta.rosetta.core.scoring.superimpose_pose(pose_hal, pose_ref, align_map)
-    return rmsd
+    xyz_ref = np.array(xyz_ref)
+    xyz_hal = np.array(xyz_hal)
+
+    return calc_rmsd(xyz_ref, xyz_hal)
 
 def main():
 
@@ -100,7 +124,9 @@ def main():
     DSSP = pyrosetta.rosetta.protocols.moves.DsspMover()
 
     if args.template is not None:
-        pose_ref = pyrosetta.pose_from_file(args.template)
+        pose_ref_clean = pyrosetta.pose_from_file(args.template)
+    else:
+        last_template = ''
 
     # calculate contig RMSD
     print(f'Calculating RMSDs')
@@ -129,14 +155,18 @@ def main():
                 else:
                     row[k] = trb[k]
 
-        if args.template is None:
-            pose_ref = pyrosetta.pose_from_file(trb['settings']['pdb'])
+        if args.template is None and 'settings' in trb and trb['settings']['pdb'] != last_template:
+            pose_ref_clean = pyrosetta.pose_from_file(trb['settings']['pdb'])
+            last_template = trb['settings']['pdb']
 
+        pose_ref = pose_ref_clean.clone()
         pose_hal = pyrosetta.pose_from_file(fn)
 
         row['contig_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='ca')
+        print('contig_rmsd: ', row['contig_rmsd'])
         if args.sc_rmsd:
             row['contig_sc_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='sc')
+            print('contig_sc_rmsd: ', row['contig_sc_rmsd'])
 
         if args.interface_res is not None:
             interface_res = []
@@ -148,8 +178,10 @@ def main():
                         interface_res.append(('A', int(x)))
 
             row['interface_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='ca', interface_res=interface_res)
+            print('interface_rmsd: ', row['interface_rmsd'])
             if args.sc_rmsd:
                 row['interface_sc_rmsd'] = get_rmsd(pose_ref, pose_hal, trb, mode='sc', interface_res=interface_res)
+                print('interface_sc_rmsd: ', row['interface_sc_rmsd'])
 
         row['rog'] = rog_scorefxn( pose_hal )
 
