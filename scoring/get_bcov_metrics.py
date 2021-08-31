@@ -21,7 +21,7 @@ from pyrosetta import *
 from rosetta.protocols.rosetta_scripts import *
 
 p = argparse.ArgumentParser()
-p.add_argument('data_dir', help='Folder of FastDesign outputs to process. Must contain both binder and receptor. Files are assumed to end in "complex.pdb"')
+p.add_argument('data_dir', help='Folder of FastDesign outputs to process. Must contain both binder (chain A) and receptor (chain B). Files are assumed to end in "complex.pdb"')
 p.add_argument('--out', help='Output file name. Default: bcov_metrics.csv')
 args = p.parse_args()
 if args.out is None: args.out = os.path.join(args.data_dir, 'bcov_metrics.csv')
