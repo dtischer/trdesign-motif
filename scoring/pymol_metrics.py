@@ -106,10 +106,10 @@ def get_rmsd(refidx, halidx, refname, halname):
         if i2>imax: imax = i2
     cmd.sort()
 
-    cstr1 = "+".join([f'{i1+off}-{i2+off}' for i1,i2,off in zip(istart,istop,offsets)])
-    cstr2 = "+".join(idx2contigstr(halidx))
+    cstr1 = "+".join(idx2contigstr(halidx))
+    cstr2 = "+".join([f'{i1+off}-{i2+off}' for i1,i2,off in zip(istart,istop,offsets)])
     #print(f'{ref_prefix}/{cstr1}/CA, {row["name"]}///{cstr2}/CA')
-    rms = cmd.pair_fit(f'{refname}/{cstr1}/CA',f'{halname}///{cstr2}/CA')
+    rms = cmd.pair_fit(f'{halname}///{cstr1}/CA', f'{refname}/{cstr2}/CA')
     for i1,i2,off in zip(istart,istop,offsets):
         cmd.alter(f'{refname}/{i1+off}-{i2+off}',f'resi=int(resi)-{off}')
     cmd.sort()
@@ -119,7 +119,8 @@ def get_rmsd(refidx, halidx, refname, halname):
     # detect clashes
     if args.receptor is not None:
         receptor = os.path.basename(args.receptor).replace('.pdb','')
-        n = cmd.select(f'{halname}////CA and all within {args.clashdist} of {receptor}')
+        n = cmd.select(f'{halname} and all within {args.clashdist} of {receptor}')
+        print(f'Receptor clashes: {n}')
     else:
         n = None
 

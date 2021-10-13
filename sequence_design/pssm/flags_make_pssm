@@ -1,4 +1,4 @@
--database /home/norn/Rosetta/main/database
+-database /home/norn/Rosetta_PSSM/main/database
 -indexed_structure_store:fragment_store /home/norn/dbs/ss_grouped_vall_all.h5
 #-indexed_structure_store:fragment_store /home/brunette/src/structured_library/unpublished_databases/ss_grouped_vall_helix_sheet_shortLoop.h5
 -nooutput
