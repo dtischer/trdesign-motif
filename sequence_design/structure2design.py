@@ -378,7 +378,7 @@ def main():
       sys.exit(err)
         
     # init pyR
-    init(f'@{flag_file} -holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -detect_disulf false')
+    init(f'@{flag_file} -precompute_ig 1 -holes:dalphaball /home/norn/software/DAlpahBall/DAlphaBall.gcc -detect_disulf false')
     
     # Design basename
     bn_des = args.pdb_in.split('/')[-1].replace('.pdb', '')
