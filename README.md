@@ -11,7 +11,7 @@ focus is generating scaffolds for functional motifs.
 
 This code accompanies the paper:
 
-    D. Tischer, S. Lisanza, J. Wang, R. Dong, I. Anishchenko, L. F. Milles, S. Ovchinnikov, D. Baker. Design of proteins presenting discontinuous functional sites using deep learning. (2020) bioRxiv, [doi:10.1101/2020.07.22.211482](https://www.biorxiv.org/content/10.1101/2020.11.29.402743v1).
+D. Tischer, S. Lisanza, J. Wang, R. Dong, I. Anishchenko, L. F. Milles, S. Ovchinnikov, D. Baker. Design of proteins presenting discontinuous functional sites using deep learning. (2020) bioRxiv, [doi:10.1101/2020.07.22.211482](https://www.biorxiv.org/content/10.1101/2020.11.29.402743v1).
 
 ## Requirements
 
