@@ -21,8 +21,8 @@ from scipy import stats
 import networkx as nx
 from itertools import permutations
 
-DB_DIR = "/home/krypton/projects/TrR_for_design" # location of databases
-SCWRL = f"{DB_DIR}/scwrl4"                       # location of scwrl installation
+# directory of this script
+script_dir = os.path.dirname(os.path.realpath(__file__))
 
 ####################
 ## load libraries ##
@@ -97,6 +97,7 @@ def main(argv):
   p.add_argument('--serial',        default=False, type=str2bool, help='enable approx. serial mode')
   p.add_argument('--n_models',      default=5, type=int, help='number of TrRosetta models to load into memory')
   p.add_argument('--specific_models', default=None, type=str, help="Load speicific trR models. ex:'xaa', 'xab',...")
+  p.add_argument('--db_dir',      default=script_dir+'/../db/base_model/' , type=str, help='location of network weights and other databases')
   #-------------------------------------------------------------------------------------
   # Graph inputs (used at graph execution)
   #-------------------------------------------------------------------------------------       
@@ -151,6 +152,9 @@ def main(argv):
   if (o.cs_method == 'ia') and ('-' in o.len):
     err = f"ERROR: Proteins must be a fixed length when using cs_method 'ia'"
     sys.exit(err)
+
+  DB_DIR = o.db_dir # location of databases
+  SCWRL = f"{DB_DIR}/scwrl4"                       # location of scwrl installation
 
   ##########################################
   # Dependent arguments
