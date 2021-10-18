@@ -57,5 +57,5 @@ hallucination script.
 
 ## Links
 
-[trDesign](https://github.com/gjoni/trDesign) - free hallucination and fully constrained fixed-backbone sequence design using trRosetta
-[trRosetta](https://github.com/gjoni/trRosetta) - protein structure prediction with a convolutional neural network
+ - [trDesign](https://github.com/gjoni/trDesign) - free hallucination and fully constrained fixed-backbone sequence design using trRosetta
+ - [trRosetta](https://github.com/gjoni/trRosetta) - protein structure prediction with a convolutional neural network
