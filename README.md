@@ -15,9 +15,9 @@ D. Tischer, S. Lisanza, J. Wang, R. Dong, I. Anishchenko, L. F. Milles, S. Ovchi
 
 ## Requirements
 
-`tensorflow` (tested on `1.14`)
-`scwrl4` (optional, for sidechains. [download](http://dunbrack.fccc.edu/SCWRL3.php/))
-`pyrosetta` (`2020.10+release.46415fa`, for obtaining structural models. see [pyrosetta.org](http://pyrosetta.org))
+ - `tensorflow` (tested on `1.14`)
+ - `scwrl4` (optional, for sidechains. [download](http://dunbrack.fccc.edu/SCWRL3.php/))
+ - `pyrosetta` (`2020.10+release.46415fa`, for obtaining structural models. see [pyrosetta.org](http://pyrosetta.org))
 
 ## Installation & Usage
 
