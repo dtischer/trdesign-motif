@@ -1,8 +1,8 @@
 # TrRosetta-based protein hallucination
-2021-10-18
-Doug Tischer (dtischer at uw.edu)
-Jue Wang (jue at post.harvard.edu)
-Sidney Lisanza (lisanza at uw.edu)
+2021-10-18    
+Doug Tischer (dtischer at uw.edu)    
+Jue Wang (jue at post.harvard.edu)    
+Sidney Lisanza (lisanza at uw.edu)    
 
 This repository contains scripts for performing protein design by gradient
 descent through the structure-prediction neural network TrRosetta. The method
