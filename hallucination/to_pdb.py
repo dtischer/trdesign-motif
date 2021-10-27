@@ -81,9 +81,7 @@ def vals_to_xyz(theta, phi, dist, omega, mask=None, verbose=False):
   # recover coordinates from dihedrals/distances
   fL,fA,fD = ppo_to_xlad(psi,omg,phi)
   xyz = fix_chirality(metric_MDS(full_dm))
-  xyz = linear_recon(full_dm, X=xyz, L=fL, A=fA, D=fD,
-                     W=mask, verbose=verbose, refine_iter=100)
-  #xyz = refine(full_dm, xyz, W=mask, verbose=verbose)
+  xyz = refine(full_dm, xyz, W=mask, verbose=verbose)
 
   # refine atoms
   N,CA,C = xyz.reshape(L,-1,3).transpose(1,0,2)
@@ -120,75 +118,6 @@ def bins_to_vals(theta, phi, dist, omega):
   theta = bin2val(theta,dih_bins,dih=True)
 
   return theta, phi, dist, omega, mask
-
-def linear_recon(DM, X=None, L=None, A=None, D=None, W=None,
-                 bond_iter=3, refine_iter=10,
-                 verbose=False, DM_native=None, rev=True):
-
-  def np_norm(x, axis=None, keepdims=True, eps=1e-8):
-    return np.sqrt(np.sum(np.square(x), axis=axis, keepdims=keepdims) + eps)
-
-  def do_step(x, xn, dn, w, step, bond):
-    if step is None: step = np.random.normal(scale=0.01,size=(3,))
-    # optimize step
-    for _ in range(bond_iter):
-      new_x = (x - step)
-      # compute gradient
-      dn_i = dn[:,None]
-      dn_o = np_norm(xn-new_x,-1)
-      g = (2 * (new_x - xn) * (dn_o - dn_i))/dn_o
-      # weighted gradient
-      if w is None: g = g.mean(0)
-      else: g = np.sum(g * w[:,None], axis=0)/(np.sum(w[:,None], axis=0) + 1e-8)
-      # constrain step to bond-length
-      step = g + step
-      step = step/np_norm(step) * bond
-    return x - step
-
-  def build(fX, fDM, fL, fA=None, fD=None, fW=None, ini=True, rev=False):
-    X,DM,L,A,D,W = fX,fDM,fL,fA,fD,fW
-    if rev: # flip direction!
-      X,L,DM = fX[::-1],fL[::-1],fDM[::-1,::-1]
-      if fA is not None: A = fA[::-1]
-      if fD is not None: D = fD[::-1]
-      if fW is not None: W = fW[::-1,::-1]
-
-    if A is None or D is None: # if angle or dihedral not provided
-      for k in range(1,ln):
-        if ini: X[k] = do_step(x=X[k-1],xn=X[:k],dn=DM[k,:k],w=None,step=None,bond=L[k-1])
-        else: X[k] = do_step(x=X[k-1],xn=X,dn=DM[k],w=W[k],step=X[k-1]-X[k],bond=L[k-1])
-    else:
-      for k in range(3,ln):
-        step = X[k-1] - extend(X[k-3],X[k-2],X[k-1],L[k-1],A[k-2],D[k-3])
-        if ini: X[k] = do_step(x=X[k-1],xn=X[:k],dn=DM[k,:k],w=None,step=step,bond=L[k-1])
-        else: X[k] = do_step(x=X[k-1],xn=X,dn=DM[k],w=W[k],step=step,bond=L[k-1])
-
-  def rms():
-    DM_ = to_len_pw(X)
-    return np.sqrt((W*np.square(DM_native-DM_)).sum()/W.sum())
-
-  # initialize
-  ln = DM.shape[0]
-  if DM_native is None: DM_native = DM
-  if W is None: W = np.ones_like(DM)
-  if L is None: L = DM.flat[1::(L+1)]
-  if X is None:
-    X = np.zeros([ln,3])
-    # if angle and dihedral are provided
-    if A is not None and D is not None:
-      X[:3] = [[0,0,0],[0,0,L[0]],
-               [0,L[1]*np.sin(A[0]),L[0]-L[1]*np.cos(A[0])]]
-
-    # initial extension
-    build(X,DM,L,A,D)
-    if verbose: print("ini",rms())
-
-  # refine extension
-  for _ in range(refine_iter):
-    if rev and _ % 2 == 0: build(X,DM,L,A,D,W,ini=False,rev=True)
-    else: build(X,DM,L,A,D,W,ini=False)
-    if verbose: print(_,rms())
-  return X
 
 def ppo_to_xlad(PSI,OMG,PHI):
   d = {"na":1.458,"ac":1.523,"cn":1.329,
